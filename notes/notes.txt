@@ -1,0 +1,17 @@
+17 Jul 2024:
+Pirate Software Jam. The idea is some kind of dual game, where one side is
+action and the other side is more strategy/logistics, and doing well in one
+allows you to do better in the other.
+
+So what's the first thing that we can work on there? We can either do the day
+mode or the night mode. I like the night mode being something where you get
+the shadows to follow you or something like that. Whatever it is, it should be
+something that works well with having different kinds of upgrades.
+
+I also would like there to be something similar with the mechanics. The
+automation eventually doesn't matter exactly what is being done, just that it
+is being automated. So having something like similar mechanics could be kinda
+cool.
+
+Okay, that was kinda fun. But now we actually have to make the things right?
+What do we make first? Which mode. I think it has to be the day mode.
