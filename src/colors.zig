@@ -94,3 +94,4 @@ pub const endesga_green3 = endesga_16;
 pub const endesga_red0 = endesga_27;
 pub const endesga_red1 = endesga_09;
 pub const endesga_red2 = endesga_08;
+pub const white = Vec4.fromHexRgb("#ffffff");

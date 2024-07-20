@@ -101,6 +101,8 @@ pub const Haathi = struct {
     }
 
     pub fn update(self: *Self, ticks: u64) void {
+        _ = self.arena_handle.reset(.retain_capacity);
+        self.arena = self.arena_handle.allocator();
         self.ticks = ticks;
     }
 
@@ -131,6 +133,15 @@ pub const Haathi = struct {
                         c.lineTo(point.x, point.y);
                     }
                     if (path.closed) c.closePath();
+                    c.stroke();
+                },
+                .line => |line| {
+                    line.color.toHexRgba(color_buffer[0..]);
+                    c.strokeStyle(color_buffer[0..].ptr);
+                    c.lineWidth(line.width);
+                    c.beginPath();
+                    c.moveTo(line.p0.x, line.p0.y);
+                    c.lineTo(line.p1.x, line.p1.y);
                     c.stroke();
                 },
                 .poly => |poly| {
@@ -176,6 +187,9 @@ pub const Haathi = struct {
     pub fn drawSprite(self: *Self, sprite: DrawSpriteOptions) void {
         self.drawables.append(.{ .sprite = sprite }) catch unreachable;
     }
+    pub fn drawLine(self: *Self, line: DrawLineOptions) void {
+        self.drawables.append(.{ .line = line }) catch unreachable;
+    }
     pub fn setCursor(self: *Self, cursor: CursorStyle) void {
         _ = self;
         c.setCursor(@tagName(cursor).ptr);
@@ -205,6 +219,7 @@ pub const Drawable = union(enum) {
     text: DrawTextOptions,
     poly: DrawPolyOptions,
     sprite: DrawSpriteOptions,
+    line: DrawLineOptions,
 };
 
 pub const DrawRectOptions = struct {
@@ -214,6 +229,13 @@ pub const DrawRectOptions = struct {
     radius: ?f32 = null,
     /// centers the rect at position.
     centered: bool = false,
+};
+
+pub const DrawLineOptions = struct {
+    p0: Vec2,
+    p1: Vec2,
+    color: Vec4,
+    width: f32 = 5,
 };
 
 pub const DrawPathOptions = struct {

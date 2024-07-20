@@ -43,27 +43,6 @@ synthesised, the player wins. Synthesising gold would require a large number of 
 been automated by the djinn. Ideally, the player should be able to finish the game in 8-10 cycles of
 day and night.
 
----
-
-## Market Experiment
-
-HTMAG talks about how the Steam audience is not a fan of "casualised" games. So a game that says it
-wants to be like Factorio but "more casual" tends to fail because the players who like Factorio
-don't want a casual version of it, while the playerse who didn't like Factorio wouldn't be too
-interested in anything that markets itself to be like Factorio.
-
-Here, I am trying to build upon that argument, and see if it can help me find a different way
-to think about the target audience. There is something about Factorio (or KSP, or any other niche
-hardcore game) that is inherently compelling. Players that don't enjoy those games bounce off
-for various reasons, but not neccessarily because the concept itself was not compelling. That's
-why devs want to make "casual"/"approachable" versions of these games, because the pitch is that
-the compelling thing will still remain compelling.
-
-So the pitch for me is: Make a casual version of a hardcore niche, but strongly link it to a more
-established genre / well understood target audience. So the casual version of Factorio is not an
-automation game, but a tower defense with automation elements. While there are many games like this,
-I don't believe many of them explicitly pitch this as a solution to the problem as stated by HTMAG.
-
 ### Theme Interpretation
 The theme is _Shadows and Alchemy_.
 
@@ -75,6 +54,27 @@ _Shadows_. As the shadowy figures attack, they cannot be attacked, and need to b
 
 I choose to interpret the _and_ to be significant as well. So the game has two different modes of play
 which have a deep connection with each other mechanically.
+
+---
+
+## Market Experiment
+
+HTMAG talks about how the Steam audience is not a fan of "casualised" games. So a game that says it
+wants to be like Factorio but "more casual" tends to fail because the players who like Factorio
+don't want a casual version of it, while the playerse who didn't like Factorio wouldn't be too
+interested in anything that markets itself to be like Factorio.
+
+Here, I am trying to build upon that argument, and see if it can help find a different way
+to think about the target audience. There is something about Factorio (or KSP, or any other niche
+hardcore game) that is inherently compelling. Players that don't enjoy those games bounce off
+for various reasons, but not neccessarily because the concept itself was not compelling. That's
+why devs want to make "casual"/"approachable" versions of these games, because the pitch is that
+the compelling thing will still remain compelling.
+
+So the pitch for me is: Make a casual version of a hardcore niche, but strongly link it to a more
+established genre / well understood target audience. So the casual version of Factorio is not an
+automation game, but a tower defense with automation elements. While there are many games like this,
+I don't believe many of them explicitly pitch this as a solution to the problem as stated by HTMAG.
 
 ---
 

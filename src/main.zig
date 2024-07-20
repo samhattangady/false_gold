@@ -15,6 +15,7 @@ export fn init() void {
     start_ticks = helpers.milliTimestamp();
     haathi = Haathi.init();
     game = Game.init(&haathi);
+    game.setup();
 }
 
 export fn keyDown(code: u32) void {

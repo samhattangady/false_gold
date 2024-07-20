@@ -1,6 +1,7 @@
 var canvas = document.getElementById("haathi_canvas");
 var ctx = canvas.getContext("2d");
 ctx.imageSmoothingEnabled = false;
+ctx.transform(1, 0, 0, -1, 0, canvas.height)
 var images = {};
 var sounds = {};
 

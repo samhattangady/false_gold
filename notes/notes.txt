@@ -14,4 +14,154 @@ is being automated. So having something like similar mechanics could be kinda
 cool.
 
 Okay, that was kinda fun. But now we actually have to make the things right?
-What do we make first? Which mode. I think it has to be the day mode.
+What do we make first? Which mode. I think it has to be the day mode. I think
+it might be easier to tweak and tune the night to be fun (though I've never
+actually done that myself before...) But I think the day mode has a lot of
+fundamental stuff that still needs to be figured out.
+
+So lets start off with the day stuff. So we need a player to move around. And
+then a thing to mine. Then a way to move the mined things around and then to
+process them. Ideally the processing things should be simple enough, and the
+day progression shouldn't be too complicated. I like the idea of structures
+that have an orientation, so that they can be used to block the paths.
+
+SOmething like that. For now lets just get the basics working. Step 1 is
+character movement, and grid creation. Where can I steal player movement from.
+Should there be acc and all? I think so yes. But very responsive.
+
+Okay. Next would be som ekind of mining. How would we do that? Create mines.
+THen click on that, and the thing should come out. Then what? How to move it?
+And how does that tie into the other one? In the sense that how does one
+mechanic in the daytome affect the nighttime mechanics? So if you mine somet
+hing, it probably pops out somewhere. THen it needs to be moved. Hopefully in
+a clever way that both is automatable in a way that works. I think because of
+the controls, we have to spend some time thinking about the things. Ideally,
+it should be as low effort as possible, as small a number of controls, just be
+very contextual. Easier to develop maybe overall. Or who knows. I think its a
+good chance to get a handle on omaking something like that. I hate that its
+been a whole day and literally all I have is a rectangle on screen and a new
+git repp. As if those are somehow the important things.
+
+---
+
+19 Jul 2024:
+Back to work baby. We've not really done much yet. But we don't work on self
+hatred. We work on self love. So just move forward. There are still a lot of
+days to go, so lets actually focus on giving our best and not getting
+distracted and stuffs.
+
+So I think we are focussing on the day. So that would mean that we need to
+create the mining things. So create ore patches.
+Oh man we need a better way to manage the grid vs world, and the y positive v
+not positive. Maybe that should be done in engine, not in code. Should we make
+the whole thing grid based? No I think that might not suit the action bits
+that well.
+
+The next thing would be to implement the mining. But also along with the
+mining we wouldhave to figure out exactly what happens when we mine the thing.
+I think it could be something like the ore gets created on the other side of
+the the patch. So that's somewhat clear. Then the movement of ore also needs
+to be somewhat easily signallable that it takes energy. Or maybe the
+automation can be done something like oddsparks. You create a path for the
+djinn, and they follow that and when they hit a station, they will do the
+task. All paths need to be loops, with a fixed starting point. I like that.
+Should be simple enough to grok. Then there would be stations, and no rules I
+think. If you want a task to be done, put a station there. Okay I like it.
+
+I have to wonder whether some of this is out of scope. We have greatly
+(probably) increased the complexity of implementation of this whole thing. But
+I think that's okay. Overall, this is not just about making something for the
+jam, but also about prototyping something different and see if it fits in our
+wheelhouse.
+
+Then there is also a question as to what would be the currency for daytime. So
+if we are going to create building structures as a mechanic, then probable we
+shouldn't be using the full screen real estate for just the world. We will
+need place for menus etc.
+
+Or maybe all loops have to start from home. There is no real idea of
+efficienct except there sort of is right? We say that djinn can only carry
+things so far. Then that home wala idea doesn't really work. Hmm okay. Lets
+keep going though. I guess then the next step would be to build the structure
+then.
+
+Should we have the same currency for night and day? I don't particularly like
+that because it would mean that... I instead prefer the idea that the base
+materials can be used for either day currency or night currency. THen the
+player makes strategic choices and builds the things that they want.
+
+The more I think about how I would want the ideal version of this thing to
+work, the more out of scope it begins to feel.. But I think that's not
+something to worry about right now. Instead, we worry about that later, where
+we can take a decision not to complete the things for hte jam or whatever.
+That would suck, but its okay.
+
+Instead, lets set the goals for today. Complete the full day prototype?
+Nothing less? I mean I think its not impossible. Basically build mode should
+be different I think. At the start of the day you decide what are the
+structures that you want to build.
+
+I also like the idea of quicksilver. Its something that needs to be extracted
+some other way, and is used throughout all the processes. So overall, from a
+gameplay standpoint, we need to figure out exactly how some of these things
+will go. We wither have a choice of things being completely decoupled, where
+what the djinns do is on a separate layer from what the player does. Or just
+have it be that the player cannot actually do anything, and can only control
+the djinn. Overall, I think the second option makes a little more sense.
+Otherwise there may be a bunch of wierd complications between how their
+interactions don't always make sense. This does make the overall automation a
+little less satisfying? Because you start off with automation, not build into
+it. Lets see how oddsparks does it. So there is system there that works maybe.
+A player inventory basically. But do I want that? It feels like it would
+increase the complexity a lot. But right now the question is what we need for
+the prototype, and this is not a really a problem that needs to be solved at
+this stage I don't think. So pick a thing and lets see how it goes. I think we
+need to be able to do it without as well. Only then does the automation feel
+good.
+
+I don't know how I've gone and convinced myself that this is something that
+could be made in two weeks, but I think for now its fine. Get it working, then
+later figure out the other bs. Then the first thing would be to build a
+structure. A mine.
+
+I think the idea of needing structures for things to be done is good. We can
+also just start off with a mine, and have that working, and then later go and
+build more. So use a structure first.
+
+Damn. Get back to work. These are things that are actually pretty easy to
+implement and get done. Just procrastinating at this point. We need to learn
+to get the stuff done faster so that we can get to the game. Remember this is
+barely half the game.
+
+We can have some thematic elements about pyramids, gold toppers and capturing
+monsters or something like that?
+
+So for the next one hour the plan is simple. First we get the actions working,
+so the player can mine, pick up and drop off goods. After that the path
+drawing, so that we can draw the path that the djinns would follow.
+
+---
+
+20 Jul 2024:
+We did about half the plan in 75% of the time but we didnt do the second half
+of what was "planned", so lets sit and get started with that stuffs now =)
+
+Okay. So the next part of the plan was to make the djinn pathing. So lets get
+started with that. Its kinda annoying, but okay. Lets do the things first. I
+mean I think its annoying because its fiddly for the sake of being able to see
+on screen. The underlying thing is probably not that bad. But okay. Be dirty
+about it, really doesnt matter.
+
+So the problem is that overdoing it also is not so useful. it'll be a pain
+very soon later on. I think the "correct" way at this stage is to do a lot of
+work everytime basically. Honestly the problem I am facing is not even hard, I
+don't knwo why Im struggling.
+
+We need a better set of intersection checks. Lol the thing I thought would
+take half an hour yesterday, basically must have taken atleast 2-3 hours. But
+atleast now we can do the thing at a decent clip.
+Next create the djinn.
+
+We now have a basic verions with one djinn moving around and doing things.
+Next we need other structures, and some ways for the djinn to queue and wait
+or something along those lines.

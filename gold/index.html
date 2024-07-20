@@ -20,7 +20,9 @@
 
   <script>
     const env = { ...api };
+    const fpsInterval = 16;
     document.addEventListener('contextmenu', event => event.preventDefault());
+    var then = window.performance.now();
 
     fetchAndInstantiate('haathi.wasm', { env }).then(instance => {
       memory = instance.exports.memory;
@@ -29,13 +31,19 @@
       document.addEventListener('keyup', e => instance.exports.keyUp(getKeycode(e.key)));
       document.addEventListener('mousedown', e => instance.exports.mouseDown(e.button));
       document.addEventListener('mouseup', e => instance.exports.mouseUp(e.button));
-      document.addEventListener('mousemove', e => instance.exports.mouseMove(e.x, e.y));
+      document.addEventListener('mousemove', e => instance.exports.mouseMove(e.x, canvas.height-e.y));
       document.addEventListener('wheel', e => instance.exports.mouseWheelY(e.deltaY));
 
       function render() {
-        instance.exports.render();
         window.requestAnimationFrame(render);
+        now = window.performance.now();
+        elapsed = now - then;
+        if (elapsed > fpsInterval) {
+          then = now - (elapsed % fpsInterval);
+          instance.exports.render();
+        }
       }
+
       window.requestAnimationFrame(render);
     });
 

@@ -1,0 +1,5 @@
+[ ] There is an issue in how we defined position for player. After a few
+transforms it results in what we want to see, but maybe its not what we
+actually want?
+
+[ ] How to handle if screen is less than 60fps?

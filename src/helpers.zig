@@ -2,6 +2,53 @@ const std = @import("std");
 const c = @import("interface.zig");
 const inputs = @import("inputs.zig");
 const MouseState = inputs.MouseState;
+const SCREEN_SIZE = @import("haathi.zig").SCREEN_SIZE;
+
+pub const Orientation = enum {
+    n,
+    e,
+    s,
+    w,
+
+    pub fn opposite(self: *const Orientation) Orientation {
+        return switch (self.*) {
+            .n => .s,
+            .e => .w,
+            .s => .n,
+            .w => .e,
+        };
+    }
+    pub fn next(self: *const Orientation) Orientation {
+        return switch (self.*) {
+            .n => .e,
+            .e => .s,
+            .s => .w,
+            .w => .n,
+        };
+    }
+    pub fn toIndex(self: *const Orientation) usize {
+        return @intFromEnum(self.*);
+    }
+    pub fn fromIndex(index: usize) Orientation {
+        return @enumFromInt(index);
+    }
+    pub fn toDir(self: *const Orientation) Vec2i {
+        return switch (self.*) {
+            .n => .{ .x = 0, .y = 1 },
+            .e => .{ .x = 1, .y = 0 },
+            .s => .{ .x = 0, .y = -1 },
+            .w => .{ .x = -1, .y = 0 },
+        };
+    }
+    pub fn getRelative(source: Vec2i, address: Vec2i) Orientation {
+        assert(source.distancei(address) == 1);
+        if (source.x > address.x) return .w;
+        if (source.x < address.x) return .e;
+        if (source.y > address.y) return .s;
+        if (source.y < address.y) return .n;
+        unreachable;
+    }
+};
 
 pub const Vec2 = struct {
     const Self = @This();
@@ -61,6 +108,10 @@ pub const Vec2 = struct {
         return .{ .x = v.x * t, .y = v.y * t };
     }
 
+    pub fn yScale(v: *const Self, t: f32) Self {
+        return .{ .x = v.x, .y = v.y * t };
+    }
+
     pub fn scaleVec2(v: *const Self, v2: Vec2) Self {
         return .{ .x = v.x * v2.x, .y = v.y * v2.y };
     }
@@ -83,10 +134,24 @@ pub const Vec2 = struct {
         };
     }
 
-    pub fn round(v: *const Self) Vec2i {
+    pub fn roundI(v: *const Self) Vec2i {
         return .{
             .x = @as(i32, @intFromFloat(@round(v.x))),
             .y = @as(i32, @intFromFloat(@round(v.y))),
+        };
+    }
+
+    pub fn floorI(v: *const Self) Vec2i {
+        return .{
+            .x = @as(i32, @intFromFloat(@floor(v.x))),
+            .y = @as(i32, @intFromFloat(@floor(v.y))),
+        };
+    }
+
+    pub fn round(v: *const Self) Vec2 {
+        return .{
+            .x = @round(v.x),
+            .y = @round(v.y),
         };
     }
 
@@ -166,21 +231,69 @@ pub const Vec2i = struct {
         return .{ .x = v.x * t, .y = v.y * t };
     }
 
-    pub fn distancei(v: *const Self, v1: Self) i32 {
-        const absx = std.math.absInt(v.x - v1.x) catch unreachable;
-        const absy = std.math.absInt(v.y - v1.y) catch unreachable;
+    // integer division. No guarantees
+    pub fn divide(v: *const Self, t: i32) Self {
+        return .{ .x = v.x / t, .y = v.y / t };
+    }
+
+    pub fn distance(v: *const Self, v1: Vec2i) f32 {
+        return v.toVec2().distance(v1.toVec2());
+    }
+
+    pub fn distancei(v: *const Self, v1: Self) usize {
+        const absx = @abs(v.x - v1.x);
+        const absy = @abs(v.y - v1.y);
         return absx + absy;
     }
 
-    pub fn numSteps(v: *const Self) i32 {
-        const absx = std.math.absInt(v.x) catch unreachable;
-        const absy = std.math.absInt(v.y) catch unreachable;
+    pub fn numSteps(v: *const Self) usize {
+        const absx = @abs(v.x);
+        const absy = @abs(v.y);
         return absx + absy;
     }
-    pub fn maxMag(v: *const Self) i32 {
-        const absx = std.math.absInt(v.x) catch unreachable;
-        const absy = std.math.absInt(v.y) catch unreachable;
+    pub fn maxMag(v: *const Self) usize {
+        const absx = @abs(v.x);
+        const absy = @abs(v.y);
         return @max(absx, absy);
+    }
+
+    pub fn orthoTarget(v: *const Vec2i, target: Vec2i) Vec2i {
+        var ot = target;
+        const absx = @abs(v.x - target.x);
+        const absy = @abs(v.y - target.y);
+        if (absx >= absy) ot.y = v.y else ot.x = v.x;
+        return ot;
+    }
+
+    pub fn orthoFixed(v: *const Vec2i, is_horizontal: bool) i32 {
+        if (is_horizontal) return v.y;
+        return v.x;
+    }
+    pub fn orthoVariable(v: *const Vec2i, is_horizontal: bool) i32 {
+        if (is_horizontal) return v.x;
+        return v.y;
+    }
+    pub fn orthoFixedV(v: *const Vec2i, is_horizontal: bool) Vec2i {
+        if (is_horizontal) return .{ .y = v.y };
+        return .{ .x = v.x };
+    }
+    pub fn orthoVariableV(v: *const Vec2i, is_horizontal: bool) Vec2i {
+        if (is_horizontal) return .{ .x = v.x };
+        return .{ .y = v.y };
+    }
+    pub fn orthoConstruct(fixed: i32, vrb: i32, is_horizontal: bool) Vec2i {
+        if (is_horizontal) return .{ .x = vrb, .y = fixed };
+        return .{ .x = fixed, .y = vrb };
+    }
+
+    // assumes that cells are ortho
+    pub fn getChangeTo(self: *const Vec2i, other: Vec2i) Vec2i {
+        if (self.x == other.x) {
+            if (self.y > other.y) return .{ .y = -1 };
+            return .{ .y = 1 };
+        }
+        if (self.x > other.x) return .{ .x = -1 };
+        return .{ .x = 1 };
     }
 };
 
@@ -474,6 +587,62 @@ pub fn lineSegmentsIntersect(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2) ?Vec2 {
     }
 }
 
+// assumes the lines are axis aligned
+// returns a point of intersectoin
+pub fn linesIntersect(p0: Vec2i, p1: Vec2i, q0: Vec2i, q1: Vec2i) ?Vec2i {
+    const p_is_horizontal = p0.y == p1.y;
+    const q_is_horizontal = q0.y == q1.y;
+    const p_start = @min(p0.orthoVariable(p_is_horizontal), p1.orthoVariable(p_is_horizontal));
+    const p_end = @max(p0.orthoVariable(p_is_horizontal), p1.orthoVariable(p_is_horizontal));
+    const q_start = @min(q0.orthoVariable(q_is_horizontal), q1.orthoVariable(q_is_horizontal));
+    const q_end = @max(q0.orthoVariable(q_is_horizontal), q1.orthoVariable(q_is_horizontal));
+    const p_fixed = p0.orthoFixed(p_is_horizontal);
+    const q_fixed = q0.orthoFixed(q_is_horizontal);
+    if (p_is_horizontal == q_is_horizontal) {
+        if (p_fixed == q_fixed) {
+            // lines are parallel. They intersect if they have the same fixed
+            // and they overlap
+            if (p_start <= q_end and q_start <= p_end) {
+                // overlap exists
+                // dont return p0 if there are multiple points of overlap
+                // points that overlap go from max_of_starts to min_of_ends
+                const overlap_start = @max(p_start, q_start);
+                const overlap_end = @min(p_end, q_end);
+                const overlap = blk: {
+                    if (overlap_end - overlap_start > 1) break :blk overlap_start + 1;
+                    if (overlap_start == p0.orthoVariable(p_is_horizontal)) break :blk overlap_end;
+                    break :blk overlap_start;
+                };
+                if (overlap > overlap_end) return null;
+                return Vec2i.orthoConstruct(p_fixed, overlap, p_is_horizontal);
+            } else {
+                return null;
+            }
+        } else {
+            return null;
+        }
+    } else {
+        // lines are orthogonal check that fixed of both lies between variable of the other
+        if (q_start <= p_fixed and p_fixed <= q_end and p_start <= q_fixed and q_fixed <= p_end) {
+            return Vec2i.orthoConstruct(p_fixed, q_fixed, p_is_horizontal);
+        } else {
+            return null;
+        }
+    }
+}
+
+// returns a point of intersectoin - unless p0 is the intersectino point, in which
+// case we return null - so that when drawing a line, we dont register as a collision
+// with the point that we are leaving
+pub fn linesIntersectNotStart(p0: Vec2i, p1: Vec2i, q0: Vec2i, q1: Vec2i) ?Vec2i {
+    if (linesIntersect(p0, p1, q0, q1)) |intersect| {
+        if (intersect.equal(p0)) return null;
+        return intersect;
+    } else {
+        return null;
+    }
+}
+
 pub fn pointToLineDistanceSqr(point: Vec2, line: Line) f32 {
     // TODO (21 Jul 2023 sam): Check if this works. Copied over...
     const l_sqr = line.p0.distanceSqr(line.p1);
@@ -500,4 +669,145 @@ pub fn enumChange(val: anytype, change: i8, loop: bool) @TypeOf(val) {
 
 pub fn assert(condition: bool) void {
     if (!condition) unreachable; // assertion failed.
+}
+
+/// ConstKey is a useful key that can be used for the ConstIndexArray
+/// It has a few methods like equal, serialization etc.
+/// It needs a unique string as input so that the compiler knows that
+/// each unique string is a unique type
+pub fn ConstKey(comptime val: []const u8) type {
+    return struct {
+        // Uses 0 memory. Just for the compiler to know that this is a
+        // unique type.
+        _unique: [val.len]void = undefined,
+        index: usize,
+        pub fn equal(a: *const @This(), b: @This()) bool {
+            return a.index == b.index;
+        }
+        // pub fn serialize(self: *const @This(), js: *serializer.JsonSerializer) !void {
+        //     serializer.serialize("index", self.index, js) catch unreachable;
+        // }
+        // pub fn deserialize(self: *@This(), js: std.json.Value, options: serializer.DeserializationOptions) void {
+        //     serializer.deserialize("index", &self.index, js, options);
+        // }
+    };
+}
+
+/// ConstIndexArray is a wrapper around ArrayHashMap that allows us to
+/// just use append where it will just increment the index and add the
+/// new item at that key.
+/// We use this to have lists where we want the indexes to remain valid
+/// even when other items in the list are deleted
+/// Ideally we use ConstKey as the key.
+pub fn ConstIndexArray(comptime Key: type, comptime T: type) type {
+    return struct {
+        const Self = @This();
+        const Pair = struct {
+            key: Key,
+            val: T,
+        };
+        map: std.AutoArrayHashMap(Key, T),
+        counter: usize,
+
+        // TODO (25 Dec 2023 sam): add a method that can return pairs of these.
+        // const Pair = struct {
+        //     key: @TypeOf(Key),
+        //     value: @TypeOf(T),
+        // };
+
+        pub fn init(allocator: std.mem.Allocator) Self {
+            return .{
+                .map = std.AutoArrayHashMap(Key, T).init(allocator),
+                .counter = 0,
+            };
+        }
+
+        pub fn deinit(self: *Self) void {
+            self.map.deinit();
+        }
+
+        pub fn clearRetainingCapacity(self: *Self) void {
+            self.map.clearRetainingCapacity();
+            self.counter = 0;
+        }
+
+        // pub fn serialize(self: *const Self, js: *serializer.JsonSerializer) !void {
+        //     for (self.keys()) |key| {
+        //         var buffer: [8]u8 = undefined;
+        //         const key_name = std.fmt.bufPrint(buffer[0..], "{d}", .{key.index}) catch unreachable;
+        //         const val = self.getPtr(key);
+        //         try js.objectField(key_name);
+        //         try js.beginObject();
+        //         try val.serialize(js);
+        //         try js.endObject();
+        //     }
+        // }
+
+        // pub fn deserialize(self: *@This(), js: std.json.Value, options: serializer.DeserializationOptions) void {
+        //     var list_keys = js.object.iterator();
+        //     while (list_keys.next()) |pair| {
+        //         const key = pair.key_ptr.*;
+        //         var val: T = undefined;
+        //         const index = Key{ .index = std.fmt.parseInt(usize, key, 10) catch unreachable };
+        //         val.deserialize(js.object.get(key).?, options);
+        //         self.map.put(index, val) catch unreachable;
+        //         if (index.index + 1 > self.counter) self.counter = index.index + 1;
+        //     }
+        // }
+
+        pub fn getNextKey(self: *Self) Key {
+            // TODO (29 Jan 2024 sam): If we change this design to give a recently
+            // deleted key instead, it will affect simulation.tryRemoveTerraAnt, which
+            // holds references to possibly unused trail keys. Keep in mind when refactor
+            return .{ .index = self.counter };
+        }
+
+        pub fn append(self: *Self, item: T) !void {
+            try self.map.put(self.getNextKey(), item);
+            self.counter += 1;
+        }
+
+        /// we want to crash on trying to get things that don't exist
+        pub fn getPtr(self: *const Self, key: Key) *T {
+            return self.map.getPtr(key).?;
+        }
+
+        pub fn getConstPtr(self: *const Self, key: Key) *const T {
+            return self.map.getPtr(key).?;
+        }
+
+        pub fn ifGetPtr(self: *const Self, key: Key) ?*T {
+            return self.map.getPtr(key);
+        }
+
+        pub fn items(self: *Self) []T {
+            return self.map.values();
+        }
+
+        pub fn constItems(self: *const Self) []T {
+            return self.map.values();
+        }
+
+        pub fn keys(self: *const Self) []Key {
+            return self.map.keys();
+        }
+
+        pub fn count(self: *const Self) usize {
+            return self.map.count();
+        }
+
+        pub fn delete(self: *Self, key: Key) void {
+            const removed = self.map.swapRemove(key);
+            std.debug.assert(removed);
+        }
+
+        pub fn contains(self: *const Self, key: Key) bool {
+            return self.map.contains(key);
+        }
+
+        pub fn remove(self: *Self, key: Key) T {
+            const val = self.map.fetchSwapRemove(key).?;
+            return val.value;
+        }
+    };
 }
