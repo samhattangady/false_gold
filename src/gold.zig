@@ -19,6 +19,7 @@ const ConstKey = helpers.ConstKey;
 
 const PathIndex = ConstKey("gold_path");
 const DjinnIndex = ConstKey("gold_djinn");
+const StructureIndex = ConstKey("gold_structure");
 
 const PLAYER_ACCELERATION = 2;
 const PLAYER_VELOCITY_MAX = 6;
@@ -115,7 +116,7 @@ const Player = struct {
     position: Vec2 = .{},
     velocity: Vec2 = .{},
     address: Vec2i = .{},
-    action_available: bool = false,
+    action_available: ?Action = null,
     carrying: ?ResourceType = null,
 
     pub fn clampVelocity(self: *Player) void {
@@ -146,6 +147,13 @@ const SlotType = enum {
     action,
     pickup,
     dropoff,
+
+    pub fn isBlocking(self: *const SlotType) bool {
+        return switch (self.*) {
+            .action, .pickup => true,
+            .dropoff => false,
+        };
+    }
 };
 
 pub const StructureType = enum {
@@ -259,6 +267,7 @@ pub const BuilderMode = enum {
     idle,
     path,
     djinn,
+    build,
 };
 
 pub const Builder = struct {
@@ -268,6 +277,7 @@ pub const Builder = struct {
     current_path: Path,
     target: Vec2i = .{},
     invalid: ?Vec2i = null,
+    can_build: bool = false,
 
     pub fn init(allocator: std.mem.Allocator) Builder {
         return .{
@@ -278,6 +288,14 @@ pub const Builder = struct {
     pub fn deinit(self: *Builder) void {
         self.current_path.deinit();
     }
+};
+
+pub const Action = struct {
+    address: Vec2i,
+    structure: StructureIndex,
+    slot_index: usize,
+    can_be_done: bool,
+    blocking: bool,
 };
 
 pub const Djinn = struct {
@@ -291,16 +309,23 @@ pub const Djinn = struct {
     carrying: ?ResourceType = null,
 
     pub fn update(self: *Djinn, game: *Game) void {
+        var should_move = true;
+        if (game.actionAvailable(self.target_address, self.carrying != null)) |action| {
+            if (!action.can_be_done and action.blocking) {
+                should_move = false;
+            } else {
+                game.doAction(action, &self.carrying);
+            }
+        }
         const path = game.paths.getPtr(self.path);
         self.anim_start_pos = self.anim_end_pos;
         self.address = self.target_address;
-        self.cell_index += 1;
+        if (should_move) {
+            self.cell_index += 1;
+        }
         if (self.cell_index == path.cells.items.len) self.cell_index = 0;
         self.target_address = path.cells.items[self.cell_index];
         self.anim_end_pos = game.world.gridCenter(self.target_address);
-        if (game.actionAvailable(self.address, self.carrying != null)) {
-            game.doAction(self.address, &self.carrying);
-        }
     }
 
     pub fn lerpPosition(self: *Djinn, t: f32) void {
@@ -339,7 +364,7 @@ pub const Game = struct {
     ticks: u64 = 0,
     world: World,
     resources: std.ArrayList(Resource),
-    structures: std.ArrayList(Structure),
+    structures: ConstIndexArray(StructureIndex, Structure),
     paths: ConstIndexArray(PathIndex, Path),
     inventory: [RESOURCE_COUNT]u16 = [_]u16{0} ** RESOURCE_COUNT,
     djinns: DjinnSystem,
@@ -357,7 +382,7 @@ pub const Game = struct {
         const world = World.init(haathi.allocator);
         return .{
             .haathi = haathi,
-            .structures = std.ArrayList(Structure).init(allocator),
+            .structures = ConstIndexArray(StructureIndex, Structure).init(allocator),
             .resources = std.ArrayList(Resource).init(allocator),
             .paths = ConstIndexArray(PathIndex, Path).init(allocator),
             .builder = Builder.init(allocator),
@@ -382,13 +407,14 @@ pub const Game = struct {
     pub fn setup(self: *Game) void {
         self.structures.append(.{ .structure = .base, .position = .{} }) catch unreachable;
         self.structures.append(.{ .structure = .mine, .position = .{ .x = 6, .y = 3 } }) catch unreachable;
-        for (self.structures.items) |*str| str.setup();
+        for (self.structures.items()) |*str| str.setup();
         self.world.setup();
+        const pkey = self.paths.getNextKey();
         {
             var path = Path.init(self.haathi.allocator);
             path.addPoint(.{ .x = 1, .y = 2 });
-            path.addPoint(.{ .x = 8, .y = 2 });
-            path.addPoint(.{ .x = 8, .y = 4 });
+            path.addPoint(.{ .x = 7, .y = 2 });
+            path.addPoint(.{ .x = 7, .y = 4 });
             path.addPoint(.{ .x = 0, .y = 4 });
             path.addPoint(.{ .x = 0, .y = 1 });
             path.addPoint(.{ .x = 1, .y = 1 });
@@ -396,13 +422,16 @@ pub const Game = struct {
             self.addPath(path);
         }
         {
-            self.addDjinn(.{ .x = 1, .y = 2 });
+            self.addDjinn(pkey, 2);
+            self.addDjinn(pkey, 1);
+            self.addDjinn(pkey, 0);
         }
     }
 
-    fn actionAvailable(self: *const Game, address: Vec2i, is_carrying: bool) bool {
+    fn actionAvailable(self: *Game, address: Vec2i, is_carrying: bool) ?Action {
         // check if address is slot
-        for (self.structures.items) |str| {
+        for (self.structures.keys()) |skey| {
+            const str = self.structures.getPtr(skey);
             if (address.distancei(str.position) != 1) continue;
             const slot_orientation = Orientation.getRelative(str.position, address);
             const slot_opt = str.slots[slot_orientation.toIndex()];
@@ -411,26 +440,42 @@ pub const Game = struct {
             switch (slot) {
                 .pickup => {
                     const has_resource = self.hasResource(address);
-                    return has_resource != null;
+                    return .{
+                        .address = address,
+                        .structure = skey,
+                        .slot_index = slot_orientation.toIndex(),
+                        .can_be_done = has_resource != null,
+                        .blocking = slot.isBlocking(),
+                    };
                 },
                 .dropoff => {
-                    const has_resource = self.hasResource(address);
-                    if (has_resource != null) return false;
-                    return is_carrying;
+                    return .{
+                        .address = address,
+                        .structure = skey,
+                        .slot_index = slot_orientation.toIndex(),
+                        .can_be_done = is_carrying,
+                        .blocking = slot.isBlocking(),
+                    };
                 },
                 .action => {
                     switch (str.structure) {
                         .mine => {
                             // can only do action if there is no resource in the pickup slot
                             const has_resource = self.hasResource(str.position.add(str.orientation.toDir()));
-                            return has_resource == null;
+                            return .{
+                                .address = address,
+                                .structure = skey,
+                                .slot_index = slot_orientation.toIndex(),
+                                .can_be_done = has_resource == null,
+                                .blocking = slot.isBlocking(),
+                            };
                         },
                         .base => unreachable,
                     }
                 },
             }
         }
-        return false;
+        return null;
     }
 
     fn hasResource(self: *const Game, address: Vec2i) ?ResourceType {
@@ -450,42 +495,37 @@ pub const Game = struct {
         unreachable;
     }
 
-    // TODO (19 Jul 2024 sam): Find a better way to not repeat code here and actionAvailable
-    fn doAction(self: *Game, address: Vec2i, carrying: *?ResourceType) void {
-        helpers.debugPrint("action at {d},{d}", .{ address.x, address.y });
-        for (self.structures.items) |str| {
-            if (address.distancei(str.position) != 1) continue;
-            const slot_orientation = Orientation.getRelative(str.position, address);
-            const slot_opt = str.slots[slot_orientation.toIndex()];
-            if (slot_opt == null) continue;
-            const slot = slot_opt.?;
-            switch (slot) {
-                .pickup => {
-                    const has_resource = self.hasResource(address);
-                    helpers.assert(has_resource != null);
-                    carrying.* = has_resource;
-                    self.removeResource(address);
-                },
-                .dropoff => {
-                    const has_resource = self.hasResource(address);
-                    helpers.assert(has_resource == null);
-                    helpers.assert(carrying.* != null);
-                    self.inventory[@intFromEnum(carrying.*.?)] += 1;
-                    carrying.* = null;
-                },
-                .action => {
-                    switch (str.structure) {
-                        .mine => {
-                            // can only do action if there is no resource in the pickup slot
-                            const output_spot = str.position.add(str.orientation.toDir());
-                            const has_resource = self.hasResource(output_spot);
-                            helpers.assert(has_resource == null);
-                            self.resources.append(.{ .resource = .lead, .position = output_spot }) catch unreachable;
-                        },
-                        .base => unreachable,
-                    }
-                },
-            }
+    fn doAction(self: *Game, action: Action, carrying: *?ResourceType) void {
+        if (!action.can_be_done) return;
+        helpers.debugPrint("action at {d},{d}", .{ action.address.x, action.address.y });
+        const str = self.structures.getPtr(action.structure);
+        const slot = str.slots[action.slot_index].?;
+        switch (slot) {
+            .pickup => {
+                const has_resource = self.hasResource(action.address);
+                helpers.assert(has_resource != null);
+                carrying.* = has_resource;
+                self.removeResource(action.address);
+            },
+            .dropoff => {
+                const has_resource = self.hasResource(action.address);
+                helpers.assert(has_resource == null);
+                helpers.assert(carrying.* != null);
+                self.inventory[@intFromEnum(carrying.*.?)] += 1;
+                carrying.* = null;
+            },
+            .action => {
+                switch (str.structure) {
+                    .mine => {
+                        // can only do action if there is no resource in the pickup slot
+                        const output_spot = str.position.add(str.orientation.toDir());
+                        const has_resource = self.hasResource(output_spot);
+                        helpers.assert(has_resource == null);
+                        self.resources.append(.{ .resource = .lead, .position = output_spot }) catch unreachable;
+                    },
+                    .base => unreachable,
+                }
+            },
         }
     }
 
@@ -519,8 +559,8 @@ pub const Game = struct {
         switch (self.builder.mode) {
             .idle => {
                 if (self.player.address.equal(address)) {
-                    if (self.player.action_available and self.haathi.inputs.mouse.l_button.is_clicked) {
-                        self.doAction(self.player.address, &self.player.carrying);
+                    if (self.player.action_available != null and self.player.action_available.?.can_be_done and self.haathi.inputs.mouse.l_button.is_clicked) {
+                        self.doAction(self.player.action_available.?, &self.player.carrying);
                     }
                 }
                 if (self.haathi.inputs.getKey(.p).is_clicked) {
@@ -528,6 +568,9 @@ pub const Game = struct {
                 }
                 if (self.haathi.inputs.getKey(.o).is_clicked) {
                     self.builder.mode = .djinn;
+                }
+                if (self.haathi.inputs.getKey(.i).is_clicked) {
+                    self.builder.mode = .build;
                 }
             },
             .path => {
@@ -548,8 +591,21 @@ pub const Game = struct {
                 }
             },
             .djinn => {
-                if (self.haathi.inputs.mouse.l_button.is_clicked and self.pathStarts(address)) {
-                    self.addDjinn(address);
+                if (self.haathi.inputs.mouse.l_button.is_clicked) {
+                    if (self.pathStarts(address)) |pkey| {
+                        self.addDjinn(pkey, 0);
+                        self.builder.mode = .idle;
+                    }
+                }
+            },
+            .build => {
+                if (self.haathi.inputs.getKey(.r).is_clicked) self.builder.orientation = self.builder.orientation.next();
+                // TODO (20 Jul 2024 sam): Should also check no collisions with other slots / paths?
+                self.builder.can_build = self.isOrePatch(address) and self.getStructure(address) == null;
+                if (self.haathi.inputs.mouse.l_button.is_clicked and self.builder.can_build) {
+                    const skey = self.structures.getNextKey();
+                    self.structures.append(.{ .structure = .mine, .position = address, .orientation = self.builder.orientation }) catch unreachable;
+                    self.structures.getPtr(skey).setup();
                     self.builder.mode = .idle;
                 }
             },
@@ -557,16 +613,28 @@ pub const Game = struct {
         self.djinns.update(self);
     }
 
-    fn addDjinn(self: *Game, address: Vec2i) void {
-        for (self.paths.keys()) |pkey| {
-            const path = self.paths.getPtr(pkey);
-            if (path.points.items[0].equal(address)) {
-                // add djinn
-                const pos = self.world.gridCenter(address);
-                self.djinns.djinns.append(.{ .position = pos, .address = address, .path = pkey, .cell_index = 0, .anim_start_pos = pos, .anim_end_pos = pos }) catch unreachable;
-                return;
-            }
+    fn isOrePatch(self: *Game, address: Vec2i) bool {
+        for (self.world.ore_patches.items) |patch| {
+            if (patch.position.equal(address)) return true;
         }
+        return false;
+    }
+
+    fn getStructure(self: *Game, address: Vec2i) ?StructureIndex {
+        for (self.structures.keys()) |skey| {
+            const str = self.structures.getPtr(skey);
+            if (str.position.equal(address)) return skey;
+        }
+        return null;
+    }
+
+    fn addDjinn(self: *Game, pkey: PathIndex, index: usize) void {
+        const path = self.paths.getPtr(pkey);
+        const address = path.cells.items[index];
+        // add djinn
+        const pos = self.world.gridCenter(address);
+        self.djinns.djinns.append(.{ .position = pos, .address = address, .path = pkey, .cell_index = index, .anim_start_pos = pos, .anim_end_pos = pos }) catch unreachable;
+        return;
     }
 
     fn addPath(self: *Game, path_in: Path) void {
@@ -576,12 +644,12 @@ pub const Game = struct {
         self.paths.append(path) catch unreachable;
     }
 
-    fn pathStarts(self: *Game, address: Vec2i) bool {
+    fn pathStarts(self: *Game, address: Vec2i) ?PathIndex {
         for (self.paths.keys()) |pkey| {
             const path = self.paths.getPtr(pkey);
-            if (path.points.items[0].equal(address)) return true;
+            if (path.points.items[0].equal(address)) return pkey;
         }
-        return false;
+        return null;
     }
 
     // checks that the path doesn't intersect with structures, or other paths
@@ -647,6 +715,26 @@ pub const Game = struct {
         }
     }
 
+    fn drawStructure(self: *Game, str: Structure) void {
+        self.drawCellInset(str.position, 6, colors.solarized_blue.alpha(0.8));
+        for (str.slots, 0..) |slot, i| {
+            if (slot) |stype| {
+                const address = str.position.add(Orientation.fromIndex(i).toDir());
+                switch (stype) {
+                    .pickup => {
+                        self.drawCellInset(address, 5, colors.solarized_green.alpha(0.4));
+                    },
+                    .dropoff => {
+                        self.drawCellInset(address, 5, colors.solarized_cyan.alpha(0.4));
+                    },
+                    .action => {
+                        self.drawCellInset(address, 5, colors.solarized_orange.alpha(0.4));
+                    },
+                }
+            }
+        }
+    }
+
     pub fn render(self: *Game) void {
         // background
         self.haathi.drawRect(.{
@@ -671,24 +759,8 @@ pub const Game = struct {
             self.drawCellInset(patch.position, 3, colors.solarized_base1.alpha(0.5));
         }
         // draw structures
-        for (self.structures.items) |str| {
-            self.drawCellInset(str.position, 6, colors.solarized_blue.alpha(0.8));
-            for (str.slots, 0..) |slot, i| {
-                if (slot) |stype| {
-                    const address = str.position.add(Orientation.fromIndex(i).toDir());
-                    switch (stype) {
-                        .pickup => {
-                            self.drawCellInset(address, 5, colors.solarized_green.alpha(0.4));
-                        },
-                        .dropoff => {
-                            self.drawCellInset(address, 5, colors.solarized_cyan.alpha(0.4));
-                        },
-                        .action => {
-                            self.drawCellInset(address, 5, colors.solarized_orange.alpha(0.4));
-                        },
-                    }
-                }
-            }
+        for (self.structures.items()) |str| {
+            self.drawStructure(str);
         }
         // draw resources
         for (self.resources.items) |rsc| {
@@ -707,7 +779,7 @@ pub const Game = struct {
                 .color = colors.solarized_orange,
             });
         }
-        if (self.player.action_available) {
+        if (self.player.action_available != null and self.player.action_available.?.can_be_done) {
             self.drawCellBorder(self.world.toGridCell(self.player.position), 4, colors.solarized_base03);
         } else {
             self.drawCellBorder(self.world.toGridCell(self.player.position), 1, colors.solarized_base03.alpha(0.3));
@@ -746,6 +818,17 @@ pub const Game = struct {
             //    .color = colors.solarized_orange,
             //});
         }
+        if (self.builder.mode == .build) {
+            var temp_str = Structure{ .position = address, .orientation = self.builder.orientation, .structure = .mine };
+            temp_str.setup();
+            self.drawStructure(temp_str);
+            if (!self.builder.can_build) {
+                self.drawCellInset(address, 6, colors.solarized_red);
+            }
+        }
+
+        const inventory = std.fmt.allocPrintZ(self.haathi.arena, "Lead: {d}", .{self.inventory[0]}) catch unreachable;
+        self.haathi.drawText(.{ .text = inventory, .position = .{ .x = 60, .y = 50 }, .color = colors.solarized_base03 });
         if (false) { // testing lerp
             const center = Vec2i{};
             const target = center.orthoTarget(address);

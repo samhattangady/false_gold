@@ -158,7 +158,12 @@ const textAlign = (alignment) => {
 }
 
 const fillText = (text, x, y, width) => {
-  ctx.fillText(wasmString(text), x, y, width);
+  // we flip the canvas to get desirable x and y axis directions. But that results in text
+  // being drawn upside down, so we adjust for that here.
+  ctx.save();
+  ctx.transform(1, 0, 0, -1, 0, canvas.height)
+  ctx.fillText(wasmString(text), x, canvas.height-y, width);
+  ctx.restore();
 }
 
 const setCursor = (style) => {

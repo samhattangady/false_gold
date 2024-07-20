@@ -165,3 +165,15 @@ Next create the djinn.
 We now have a basic verions with one djinn moving around and doing things.
 Next we need other structures, and some ways for the djinn to queue and wait
 or something along those lines.
+
+I think lets do the queuing things? That might be interesting? Basically a few
+things. ONe is that at any stations that the djinn should technically have a
+task, let them wait. Its either that or a queue based thing. But I don't feel
+like implementing the queuing thing. I'd rather have multiple guys be going
+there all the time. Would need to show that there are multiple guys waiting
+there, but apart from that, I think it should be okay. Rather than clogging up
+the lanes
+
+Damn, I was not actually expecting that to work quite so easily. So now we try
+with two djinns I guess. Done adding ability for player to build mines.
+Awesome.
