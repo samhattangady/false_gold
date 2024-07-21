@@ -177,3 +177,43 @@ the lanes
 Damn, I was not actually expecting that to work quite so easily. So now we try
 with two djinns I guess. Done adding ability for player to build mines.
 Awesome.
+
+---
+
+21 Jul 2024: 
+SUNDAAAAYYY! But still we persevere. TO start off I would like to make sure
+that the game run s in the background as well. So I think that means we need
+to edit the update to run independently of the animate frame. But that looks
+like it needs us to also change up the engine a bit...  Eh chuck it.  Let it
+be as it is now. Don't want to get into the whole browser/js stuffs.
+
+So I think we should start off with night? Okay. How to do that? Flags? I am
+I think there is a somewhat serious question now about how we want the
+automation / stuffs to work. Currently the idea is that daytime is low
+pressure / no pressure, and you have energy, and once that's done (or not) you
+can start off with night time. Which I think in general is okay for the
+player.
+
+The question is then about the djinns, and how their automation should work.
+Ideally they should work in the day alonside you, and then once they're done,
+be done. So in that case, the night should probably look the same with a dark
+tint over it or something basic like that. Lets start off with night mode
+then?
+
+In terms of game things, I am thinking something like you can pick up sticks,
+light them, and move them around. and drop them wherever you like. So its just
+like running around and picking up the things.
+And maybe the location of the light things is exactly the same as the mines?
+Or something like that? I like that and how it ties the two modes together.
+
+Okay lets try that. Also right now I am a litle scared of the approach of lets
+try and see what comes out of it... because of how that messed up antbotics.
+But muaybe this is different.,
+
+So now the issue is that unless we have multiple things that need to be
+protected, the best strategy is to just sit in on the thing. So I guess then
+we would need to have two things to protect, but the problem there I think
+still remains that what if they steal one?
+
+So yeah, unless you're moving around, its no fun. So there has to be a good
+reason to keep moving around and doing the things.

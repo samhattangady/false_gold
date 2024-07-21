@@ -153,4 +153,32 @@ These are the different knobs that can be tweaked to change the overall experien
 
 ---
 
+## Detailed Mechanics Breakdown
 
+### Night time
+The goal at night time is to keep the shadow warriors away. The shadow warriors are afraid of light
+and their goal is to steal the magic at the main base. The player themselves emits some light, so
+running towards the shadows makes them scared of you, and they will then run away from you. But since
+its light they are afraid of, they might also accidentally run towards your base, so theres a balance
+there to take care of. Once the warrior has been hit by light, they will keep moving in the same direction
+for a small duration at an increased speed, and following that, they will continue trying to steal the
+magic.
+
+The warriors do not attack / harm the player in any way. When the player "scares" away the warrior, the
+warrior attracts all of the players light towards itself, as long as it is within the players range.
+So if there is a group of warriors coming together, then they will attract the focus of the light, and
+the player has to be more strategic in how they move.
+
+If the shadow warrior reaches the base, they will steal the magic, and start moving away.
+If the player hits them with light again, the magic will be dropped, and slowly move back towards base.
+So as long as the warrior doesn't get away, the magic remains in bounds, and the player is successful
+in their defense.
+
+To help themself, the player may also use lamps. These can be picked up from the automation structures
+the same way that the player picks up ore during the day. Lamps have a fixed time for which they are
+lit. The player can then carry them around, which increases their light output, thus their effective
+radius of impact. The player can also place down lights at the structures (except base) which will
+keep away the shadows from there as long as the light is lit.
+
+Night lasts for a fixed known amount of time. The player survives if at the end of the night, there
+is still the bases magic on base. 

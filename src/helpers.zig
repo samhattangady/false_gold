@@ -470,6 +470,13 @@ pub const TextLine = struct {
     position: Vec2,
 };
 
+pub fn pointToRectDistanceSqr(point: Vec2, position: Vec2, size: Vec2) f32 {
+    const other = position.add(size);
+    const dx = @max(position.x - point.x, @max(0, point.x - other.x));
+    const dy = @max(position.y - point.y, @max(0, point.y - other.y));
+    return dx * dx + dy * dy;
+}
+
 pub fn easeinoutf(start: f32, end: f32, t: f32) f32 {
     // Bezier Blend as per StackOverflow : https://stackoverflow.com/a/25730573/5453127
     // t goes between 0 and 1.

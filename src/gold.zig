@@ -20,21 +20,32 @@ const ConstKey = helpers.ConstKey;
 const PathIndex = ConstKey("gold_path");
 const DjinnIndex = ConstKey("gold_djinn");
 const StructureIndex = ConstKey("gold_structure");
+const ShadowIndex = ConstKey("gold_shadow");
 
 const PLAYER_ACCELERATION = 2;
 const PLAYER_VELOCITY_MAX = 6;
 const PLAYER_VELOCITY_MAX_SQR = PLAYER_VELOCITY_MAX * PLAYER_VELOCITY_MAX;
 const PLAYER_VELOCITY_DAMPING = 0.2;
 const PLAYER_SIZE = Vec2{ .x = 20, .y = 30 };
+const PLAYER_LIGHT_RADIUS = 45;
+const PLAYER_LIGHT_RADIUS_SQR = PLAYER_LIGHT_RADIUS * PLAYER_LIGHT_RADIUS;
+const PLAYER_LIGHT_SIZE = Vec2{ .x = PLAYER_LIGHT_RADIUS * 2, .y = PLAYER_LIGHT_RADIUS * 2 };
 const DJINN_SIZE = Vec2{ .x = 16, .y = 22 };
+const SHADOW_SIZE = Vec2{ .x = 16, .y = 22 };
 const GRID_SIZE = Vec2i{ .x = 32, .y = 18 };
 const GRID_CELL_SIZE = Vec2{
     .x = SCREEN_SIZE.x / @as(f32, @floatFromInt(GRID_SIZE.x)),
     .y = SCREEN_SIZE.y / @as(f32, @floatFromInt(GRID_SIZE.y)),
 };
 const GRID_OFFSET = GRID_SIZE.divide(2);
+const SHADOW_VELOCITY_MAX = 1.3;
+const SHADOW_VELOCITY_SCARED = 1.8;
+const SHADOW_SCARED_TICKS = 60;
+const PLAYER_TARGET_RESET_TICKS = 30;
 
 const DJINN_TICK_COUNT = 30;
+const build_options = @import("build_options");
+const BUILDER_MODE = build_options.builder_mode;
 
 const StateData = union(enum) {
     idle: struct {
@@ -117,6 +128,8 @@ const Player = struct {
     velocity: Vec2 = .{},
     address: Vec2i = .{},
     action_available: ?Action = null,
+    target: ?ShadowIndex = null,
+    target_countdown: usize = 0,
     carrying: ?ResourceType = null,
 
     pub fn clampVelocity(self: *Player) void {
@@ -135,11 +148,20 @@ const Player = struct {
         self.position.y = @max(self.position.y, world.minY());
         self.position = self.position.round();
         self.address = world.toGridCell(self.position);
+        if (self.target_countdown > 0) {
+            self.target_countdown -= 1;
+        } else {
+            self.target = null;
+        }
     }
 
     pub fn dampVelocity(self: *Player) void {
         self.velocity = self.velocity.scale(PLAYER_VELOCITY_DAMPING);
         self.position = self.position.round();
+    }
+
+    pub fn cannotTarget(self: *const Player) bool {
+        return self.target_countdown > 0;
     }
 };
 
@@ -359,6 +381,86 @@ pub const DjinnSystem = struct {
     }
 };
 
+pub const Shadow = struct {
+    position: Vec2,
+    target: Vec2,
+    velocity: Vec2,
+    scared: ?u16 = null,
+
+    pub fn init(position: Vec2, target: Vec2) Shadow {
+        const velocity = target.subtract(position).normalize().scale(SHADOW_VELOCITY_MAX);
+        return .{
+            .position = position,
+            .target = target,
+            .velocity = velocity,
+        };
+    }
+
+    pub fn update(self: *Shadow) void {
+        if (self.scared) |st| {
+            self.scared = st + 1;
+            if (self.scared.? >= SHADOW_SCARED_TICKS) {
+                self.scared = null;
+                self.velocity = self.target.subtract(self.position).normalize().scale(SHADOW_VELOCITY_MAX);
+            }
+        }
+        self.position = self.position.add(self.velocity);
+    }
+
+    pub fn scare(self: *Shadow, anti_target: Vec2) void {
+        self.velocity = self.position.subtract(anti_target).normalize().scale(SHADOW_VELOCITY_SCARED);
+        self.scared = 0;
+    }
+};
+
+pub const ShadowSystem = struct {
+    shadows: ConstIndexArray(ShadowIndex, Shadow),
+
+    pub fn init(allocator: std.mem.Allocator) ShadowSystem {
+        return .{
+            .shadows = ConstIndexArray(ShadowIndex, Shadow).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *ShadowSystem) void {
+        self.shadows.deinit();
+    }
+
+    pub fn clear(self: *ShadowSystem) void {
+        self.shadows.clearRetainingCapacity();
+    }
+
+    pub fn addShadow(self: *ShadowSystem, position: Vec2, target: Vec2) void {
+        const shadow = Shadow.init(position, target);
+        self.shadows.append(shadow) catch unreachable;
+    }
+
+    pub fn update(self: *ShadowSystem, game: *Game) void {
+        if (game.player.target) |skey| {
+            const shadow = self.shadows.getPtr(skey);
+            if (helpers.pointToRectDistanceSqr(game.player.position, shadow.position, SHADOW_SIZE) < PLAYER_LIGHT_RADIUS_SQR) {
+                shadow.scare(game.player.position);
+                game.player.target_countdown = PLAYER_TARGET_RESET_TICKS;
+            }
+        }
+        for (self.shadows.keys()) |skey| {
+            if (game.player.cannotTarget()) break;
+            const shadow = self.shadows.getPtr(skey);
+            if (helpers.pointToRectDistanceSqr(game.player.position, shadow.position, SHADOW_SIZE) < PLAYER_LIGHT_RADIUS_SQR) {
+                shadow.scare(game.player.position);
+                game.player.target = skey;
+                game.player.target_countdown = PLAYER_TARGET_RESET_TICKS;
+            }
+        }
+        for (self.shadows.items()) |*shadow| shadow.update();
+    }
+};
+
+pub const GameMode = enum {
+    day,
+    night,
+};
+
 pub const Game = struct {
     haathi: *Haathi,
     ticks: u64 = 0,
@@ -368,9 +470,11 @@ pub const Game = struct {
     paths: ConstIndexArray(PathIndex, Path),
     inventory: [RESOURCE_COUNT]u16 = [_]u16{0} ** RESOURCE_COUNT,
     djinns: DjinnSystem,
+    shadows: ShadowSystem,
     player: Player = .{},
     builder: Builder,
     state: StateData = .{ .idle = .{} },
+    mode: GameMode = .day,
 
     allocator: std.mem.Allocator,
     arena_handle: std.heap.ArenaAllocator,
@@ -387,6 +491,7 @@ pub const Game = struct {
             .paths = ConstIndexArray(PathIndex, Path).init(allocator),
             .builder = Builder.init(allocator),
             .djinns = DjinnSystem.init(allocator),
+            .shadows = ShadowSystem.init(allocator),
             .world = world,
             .allocator = allocator,
             .arena_handle = arena_handle,
@@ -397,6 +502,7 @@ pub const Game = struct {
     pub fn deinit(self: *Game) void {
         self.builder.deinit();
         self.djinns.deinit();
+        self.shadows.deinit();
         self.structures.deinit();
         self.resources.deinit();
         for (self.paths.items()) |*path| path.deinit();
@@ -425,6 +531,16 @@ pub const Game = struct {
             self.addDjinn(pkey, 2);
             self.addDjinn(pkey, 1);
             self.addDjinn(pkey, 0);
+        }
+        {
+            self.shadows.addShadow(SCREEN_SIZE.scale(-0.5), .{});
+            self.shadows.addShadow(SCREEN_SIZE.scale(-0.5).add(.{ .x = 40 }), .{});
+            self.shadows.addShadow(SCREEN_SIZE.scale(-0.5).add(.{ .y = 40 }), .{});
+            self.shadows.addShadow(SCREEN_SIZE.scale(-0.5).add(.{ .y = 40 }), .{});
+            self.shadows.addShadow(SCREEN_SIZE.scale(-0.5).add(.{ .y = 40 }), .{});
+            self.shadows.addShadow(SCREEN_SIZE.scale(-0.5).add(.{ .y = 40 }), .{});
+            self.shadows.addShadow(SCREEN_SIZE.scale(-0.5).add(.{ .y = 40 }), .{});
+            self.shadows.addShadow(SCREEN_SIZE.scale(-0.5).add(.{ .y = 40 }), .{});
         }
     }
 
@@ -529,6 +645,7 @@ pub const Game = struct {
         }
     }
 
+    // updateGame
     pub fn update(self: *Game, ticks: u64) void {
         // clear the arena and reset.
         _ = self.arena_handle.reset(.retain_capacity);
@@ -554,63 +671,77 @@ pub const Game = struct {
         }
         self.player.clampVelocity();
         self.player.updatePosition(self.world);
-        self.player.action_available = self.actionAvailable(self.player.address, self.player.carrying != null);
         if (!moving) self.player.dampVelocity();
-        switch (self.builder.mode) {
-            .idle => {
-                if (self.player.address.equal(address)) {
-                    if (self.player.action_available != null and self.player.action_available.?.can_be_done and self.haathi.inputs.mouse.l_button.is_clicked) {
-                        self.doAction(self.player.action_available.?, &self.player.carrying);
-                    }
-                }
-                if (self.haathi.inputs.getKey(.p).is_clicked) {
-                    self.builder.mode = .path;
-                }
-                if (self.haathi.inputs.getKey(.o).is_clicked) {
-                    self.builder.mode = .djinn;
-                }
-                if (self.haathi.inputs.getKey(.i).is_clicked) {
-                    self.builder.mode = .build;
-                }
-            },
-            .path => {
-                self.builder.target = if (self.builder.current_path.points.items.len > 0) self.builder.current_path.getLastOrNull().?.orthoTarget(address) else address;
-                const prev = self.builder.current_path.getLastOrNull();
-                self.builder.invalid = self.validPathPosition(prev, self.builder.target);
-                if (self.builder.invalid == null) self.builder.invalid = self.builder.current_path.validPathPosition(prev, self.builder.target);
-                if (self.haathi.inputs.mouse.l_button.is_clicked) {
-                    const completes = self.builder.current_path.points.items.len > 0 and self.builder.current_path.points.items[0].equal(self.builder.target);
-                    if (self.builder.invalid == null) {
-                        self.builder.current_path.addPoint(self.builder.target);
-                        if (completes) {
-                            if (self.builder.current_path.points.items.len > 2) self.addPath(self.builder.current_path);
-                            self.builder.mode = .idle;
-                            self.builder.current_path.clear();
+        switch (self.mode) {
+            .day => {
+                self.player.action_available = self.actionAvailable(self.player.address, self.player.carrying != null);
+                switch (self.builder.mode) {
+                    .idle => {
+                        if (self.player.address.equal(address)) {
+                            if (self.player.action_available != null and self.player.action_available.?.can_be_done and self.haathi.inputs.mouse.l_button.is_clicked) {
+                                self.doAction(self.player.action_available.?, &self.player.carrying);
+                            }
                         }
-                    }
+                        if (self.haathi.inputs.getKey(.p).is_clicked) {
+                            self.builder.mode = .path;
+                        }
+                        if (self.haathi.inputs.getKey(.o).is_clicked) {
+                            self.builder.mode = .djinn;
+                        }
+                        if (self.haathi.inputs.getKey(.i).is_clicked) {
+                            self.builder.mode = .build;
+                        }
+                        if (BUILDER_MODE) {
+                            if (self.haathi.inputs.getKey(.m).is_clicked) self.mode = .night;
+                        }
+                    },
+                    .path => {
+                        self.builder.target = if (self.builder.current_path.points.items.len > 0) self.builder.current_path.getLastOrNull().?.orthoTarget(address) else address;
+                        const prev = self.builder.current_path.getLastOrNull();
+                        self.builder.invalid = self.validPathPosition(prev, self.builder.target);
+                        if (self.builder.invalid == null) self.builder.invalid = self.builder.current_path.validPathPosition(prev, self.builder.target);
+                        if (self.haathi.inputs.mouse.l_button.is_clicked) {
+                            const completes = self.builder.current_path.points.items.len > 0 and self.builder.current_path.points.items[0].equal(self.builder.target);
+                            if (self.builder.invalid == null) {
+                                self.builder.current_path.addPoint(self.builder.target);
+                                if (completes) {
+                                    if (self.builder.current_path.points.items.len > 2) self.addPath(self.builder.current_path);
+                                    self.builder.mode = .idle;
+                                    self.builder.current_path.clear();
+                                }
+                            }
+                        }
+                    },
+                    .djinn => {
+                        if (self.haathi.inputs.mouse.l_button.is_clicked) {
+                            if (self.pathStarts(address)) |pkey| {
+                                self.addDjinn(pkey, 0);
+                                self.builder.mode = .idle;
+                            }
+                        }
+                    },
+                    .build => {
+                        if (self.haathi.inputs.getKey(.r).is_clicked) self.builder.orientation = self.builder.orientation.next();
+                        // TODO (20 Jul 2024 sam): Should also check no collisions with other slots / paths?
+                        self.builder.can_build = self.isOrePatch(address) and self.getStructure(address) == null;
+                        if (self.haathi.inputs.mouse.l_button.is_clicked and self.builder.can_build) {
+                            const skey = self.structures.getNextKey();
+                            self.structures.append(.{ .structure = .mine, .position = address, .orientation = self.builder.orientation }) catch unreachable;
+                            self.structures.getPtr(skey).setup();
+                            self.builder.mode = .idle;
+                        }
+                    },
                 }
+                self.djinns.update(self);
             },
-            .djinn => {
-                if (self.haathi.inputs.mouse.l_button.is_clicked) {
-                    if (self.pathStarts(address)) |pkey| {
-                        self.addDjinn(pkey, 0);
-                        self.builder.mode = .idle;
-                    }
-                }
-            },
-            .build => {
-                if (self.haathi.inputs.getKey(.r).is_clicked) self.builder.orientation = self.builder.orientation.next();
-                // TODO (20 Jul 2024 sam): Should also check no collisions with other slots / paths?
-                self.builder.can_build = self.isOrePatch(address) and self.getStructure(address) == null;
-                if (self.haathi.inputs.mouse.l_button.is_clicked and self.builder.can_build) {
-                    const skey = self.structures.getNextKey();
-                    self.structures.append(.{ .structure = .mine, .position = address, .orientation = self.builder.orientation }) catch unreachable;
-                    self.structures.getPtr(skey).setup();
-                    self.builder.mode = .idle;
+            .night => {
+                self.player.action_available = null;
+                self.shadows.update(self);
+                if (BUILDER_MODE) {
+                    if (self.haathi.inputs.getKey(.m).is_clicked) self.mode = .day;
                 }
             },
         }
-        self.djinns.update(self);
     }
 
     fn isOrePatch(self: *Game, address: Vec2i) bool {
@@ -766,23 +897,12 @@ pub const Game = struct {
         for (self.resources.items) |rsc| {
             self.drawCellInset(rsc.position, 12, colors.solarized_orange);
         }
-        // draw player
-        self.haathi.drawRect(.{
-            .position = self.world.toScreenPos(self.player.position).add(PLAYER_SIZE.scale(-0.5)),
-            .size = PLAYER_SIZE,
-            .color = colors.solarized_red,
-        });
-        if (self.player.carrying) |_| {
-            self.haathi.drawRect(.{
-                .position = self.world.toScreenPos(self.player.position).add(PLAYER_SIZE.scale(-0.5)).add(PLAYER_SIZE.yVec()).add(PLAYER_SIZE.xVec().scale(0.5)).add(.{ .x = -6, .y = -6 }),
-                .size = .{ .x = 12, .y = 12 },
-                .color = colors.solarized_orange,
-            });
-        }
         if (self.player.action_available != null and self.player.action_available.?.can_be_done) {
             self.drawCellBorder(self.world.toGridCell(self.player.position), 4, colors.solarized_base03);
         } else {
-            self.drawCellBorder(self.world.toGridCell(self.player.position), 1, colors.solarized_base03.alpha(0.3));
+            if (self.mode == .day) {
+                self.drawCellBorder(self.world.toGridCell(self.player.position), 1, colors.solarized_base03.alpha(0.3));
+            }
         }
         for (self.paths.items()) |path| {
             self.drawPath(path);
@@ -825,6 +945,52 @@ pub const Game = struct {
             if (!self.builder.can_build) {
                 self.drawCellInset(address, 6, colors.solarized_red);
             }
+        }
+        if (self.mode == .night) {
+            self.haathi.drawRect(.{
+                .position = .{},
+                .size = SCREEN_SIZE,
+                .color = colors.solarized_base03.alpha(0.3),
+            });
+            // draw player light
+            const beam_multiplier = @as(f32, @floatFromInt(self.player.target_countdown)) / PLAYER_TARGET_RESET_TICKS;
+            const light_multiplier = 1 - beam_multiplier;
+            self.haathi.drawRect(.{
+                .position = self.world.toScreenPos(self.player.position),
+                .centered = true,
+                .radius = PLAYER_LIGHT_RADIUS,
+                .size = PLAYER_LIGHT_SIZE,
+                .color = colors.solarized_base3.alpha(0.6 * light_multiplier),
+            });
+            if (self.player.target) |skey| {
+                const shadow = self.shadows.shadows.getPtr(skey);
+                self.haathi.drawLine(.{
+                    .p0 = self.world.toScreenPos(self.player.position),
+                    .p1 = self.world.toScreenPos(shadow.position),
+                    .color = colors.solarized_red.lerp(colors.solarized_base3, 0.8).alpha(beam_multiplier),
+                    .width = 12,
+                });
+            }
+            for (self.shadows.shadows.items()) |shadow| {
+                self.haathi.drawRect(.{
+                    .position = self.world.toScreenPos(shadow.position).add(SHADOW_SIZE.scale(-0.5)),
+                    .size = SHADOW_SIZE,
+                    .color = colors.solarized_cyan,
+                });
+            }
+        }
+        // draw player
+        self.haathi.drawRect(.{
+            .position = self.world.toScreenPos(self.player.position).add(PLAYER_SIZE.scale(-0.5)),
+            .size = PLAYER_SIZE,
+            .color = colors.solarized_red,
+        });
+        if (self.player.carrying) |_| {
+            self.haathi.drawRect(.{
+                .position = self.world.toScreenPos(self.player.position).add(PLAYER_SIZE.scale(-0.5)).add(PLAYER_SIZE.yVec()).add(PLAYER_SIZE.xVec().scale(0.5)).add(.{ .x = -6, .y = -6 }),
+                .size = .{ .x = 12, .y = 12 },
+                .color = colors.solarized_orange,
+            });
         }
 
         const inventory = std.fmt.allocPrintZ(self.haathi.arena, "Lead: {d}", .{self.inventory[0]}) catch unreachable;

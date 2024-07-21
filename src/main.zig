@@ -36,6 +36,7 @@ export fn mouseMove(x: c_int, y: c_int) void {
 export fn mouseWheelY(y: c_int) void {
     haathi.mouseWheelY(y);
 }
+
 export fn render() void {
     const ticks = helpers.milliTimestamp() - start_ticks;
     haathi.update(ticks);

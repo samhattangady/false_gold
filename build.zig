@@ -9,7 +9,8 @@ fn jam_game_builder(b: *std.Build) void {
     const target = b.resolveTargetQuery(target_query);
     const optimize = b.standardOptimizeOption(.{});
     var options = b.addOptions();
-    _ = &options;
+    const builder_mode = b.option(bool, "builder", "Build project with developer tools") orelse true;
+    options.addOption(bool, "builder_mode", builder_mode);
     const exe = b.addExecutable(.{
         .name = "haathi",
         .root_source_file = .{ .path = "src/main.zig" },
