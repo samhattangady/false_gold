@@ -216,4 +216,55 @@ we would need to have two things to protect, but the problem there I think
 still remains that what if they steal one?
 
 So yeah, unless you're moving around, its no fun. So there has to be a good
-reason to keep moving around and doing the things.
+reason to keep moving around and doing the things. Next step would be to make
+the shadown pick up stuff. After that the goals of the other shadows can
+change, get in the way or seomthing like that.
+
+So as usual, I think we have started worrying too much about things that are
+not super important now. THese things can all change in the long run. We just
+need some kind of decision to be taken now. We have 2 magic things. They both
+have to be kept safe. Simple enough to understand the interaction with the day
+things can be done some other way overall. Or we can change that after som
+etime.
+
+Im just wondering about how engaging it would be to just keep people away all
+the time... It's literally just running around. Again, question for later.
+
+---
+
+22 Jul 2024:
+So I think the idea needs to be upated a bit. Unless the numbers reduce, there
+is no way of doing much. So lets make some changes to see if we can have agame
+where there is some way to reduce the numbers.
+I like the idea of having to chase the guys into some kind of a trap. Because
+the chase mechanic is kinda fun.
+
+There is also a question as to what is the risk reward that we want to do.
+Basically I feel that there should be some "risky" way to play the night that
+allows you to grow your economy faster, ideally by having access to more
+djinn. Somehow I managed to waste the whole day. Like most days. Pssh. No
+worries. We work with love and not with hate. Its 730pm, still enough time to
+get some work in :shrug:.
+
+Okay, teh first thing that we woyuld need to try would be to push the shadows
+in, nad make that the goal. The pushing obviously already works. Though maybe
+we can spend some more time thinking about it.
+
+What we need is a risk v reward in the mode as a whole. So that there is a
+risky way to play, which allows you to get more djinns for the other half of
+the game. I guess one way to think about it would be to make something like an
+dler. Where the first few runs, you don't really have a chance of making the
+goal. But everytime you fail, you prestige, and are able to last longer into
+the night.
+
+That's all well and good, but again it means that the night mechanic has to
+have enough depth that it can actually work. And it has to somehow work with
+the shadows theme.
+
+The best idea I can think of now would be to allow the player to invest
+resources into a djinn trap kinda thing which all warriors will try to attack,
+and also to create some kind of test, where if a trap is not used over the
+course of a night, then it generates djinn. Or something like that. So the way
+that this version would be early-mid game of the final.
+
+Okay. Lets try out this idea, and see how it feels.

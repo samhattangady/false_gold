@@ -156,7 +156,7 @@ These are the different knobs that can be tweaked to change the overall experien
 ## Detailed Mechanics Breakdown
 
 ### Night time
-The goal at night time is to keep the shadow warriors away. The shadow warriors are afraid of light
+The goal at night time is to keep the magic safe. The shadow warriors are afraid of light
 and their goal is to steal the magic at the main base. The player themselves emits some light, so
 running towards the shadows makes them scared of you, and they will then run away from you. But since
 its light they are afraid of, they might also accidentally run towards your base, so theres a balance
@@ -169,6 +169,10 @@ warrior attracts all of the players light towards itself, as long as it is withi
 So if there is a group of warriors coming together, then they will attract the focus of the light, and
 the player has to be more strategic in how they move.
 
+To eliminate a warrior, the player can "chase" them into a trap. The trap will take some amount of
+time to remove the warrior, so will be unusable at that point. So for that duration, the player has
+to chase away the other warriors and keep the things safe.
+
 If the shadow warrior reaches the base, they will steal the magic, and start moving away.
 If the player hits them with light again, the magic will be dropped, and slowly move back towards base.
 So as long as the warrior doesn't get away, the magic remains in bounds, and the player is successful
@@ -180,5 +184,14 @@ lit. The player can then carry them around, which increases their light output, 
 radius of impact. The player can also place down lights at the structures (except base) which will
 keep away the shadows from there as long as the light is lit.
 
-Night lasts for a fixed known amount of time. The player survives if at the end of the night, there
-is still the bases magic on base. 
+Night lasts for a fixed known amount of time or until all the warriors have been eliminated.
+The player survives if at the end of the night, there is still the bases magic on base.
+
+### Day time
+
+---
+
+## Jam Goals
+Make a basic prototype where both of the modes are somewhat fleshed out. I believe all the interesting
+things comes from the interplay between the modes, so its important to make sure that we are able
+to spend some time prototyping ideas there.
