@@ -56,6 +56,7 @@ const TRAP_SIZE = Vec2{ .x = 30, .y = 30 };
 const TRAP_TICKS = 60;
 const TRAP_RADIUS = 25;
 const TRAP_RADIUS_SQR = TRAP_RADIUS * TRAP_RADIUS;
+const TRAP_INDICATOR_SIZE = TRAP_SIZE.x * 1.6;
 
 const DJINN_TICK_COUNT = 30;
 const build_options = @import("build_options");
@@ -485,7 +486,9 @@ pub const ShadowSystem = struct {
             shadow.update();
             if (shadow.trapped != null) continue;
             if (game.inTrapBounds(shadow.position)) |tkey| {
-                game.traps.getPtr(tkey).trapShadow(skey);
+                const trap = game.traps.getPtr(tkey);
+                trap.trapShadow(skey);
+                shadow.position = trap.position;
                 shadow.trapped = tkey;
                 shadow.velocity = .{};
                 shadow.target = null;
@@ -1164,6 +1167,24 @@ pub const Game = struct {
                     .position = self.world.toScreenPos(trap.position),
                     .color = colors.white,
                 });
+                if (trap.shadow != null) {
+                    const progress: f32 = (TRAP_TICKS - @as(f32, @floatFromInt(trap.count))) / TRAP_TICKS;
+                    {
+                        const start = self.world.toScreenPos(trap.position).add(TRAP_SIZE.yVec().scale(0.4)).add(.{ .x = -TRAP_INDICATOR_SIZE / 2 });
+                        const end = start.add(.{ .x = TRAP_INDICATOR_SIZE });
+                        self.haathi.drawLine(.{ .p0 = start, .p1 = end, .color = colors.solarized_base03, .width = 7 });
+                        self.haathi.drawLine(.{ .p0 = start, .p1 = start.lerp(end, progress), .color = colors.solarized_base00, .width = 7 });
+                    }
+                    {
+                        const shadow_size = SHADOW_SIZE.scale(1.0 - progress);
+                        self.haathi.drawRect(.{
+                            .position = self.world.toScreenPos(trap.position),
+                            .size = shadow_size,
+                            .color = colors.solarized_cyan,
+                            .centered = true,
+                        });
+                    }
+                }
             }
         }
         // draw player

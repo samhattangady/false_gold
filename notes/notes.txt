@@ -267,4 +267,8 @@ and also to create some kind of test, where if a trap is not used over the
 course of a night, then it generates djinn. Or something like that. So the way
 that this version would be early-mid game of the final.
 
-Okay. Lets try out this idea, and see how it feels.
+Okay. Lets try out this idea, and see how it feels. Okay, that's kinda fun.
+It has potential. At least enough for this jam. For the rest of today, we just
+want to do some polish things. Tomorrow, start combining the modes, and see
+how that goes.
+So timer for the trap. Okay, then animation for the shadow to disappear.

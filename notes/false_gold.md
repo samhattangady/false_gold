@@ -103,40 +103,40 @@ The only way to succeed at the game would be to have enough djinn automating all
 all the metals are collected and processed over the course of a single day.
 
 But the progress made each day is not lost. All the processing done gives alchemical points, which
-will allow you to buy things in a marketplace before night time.
+will allow you to buy things that help at night time.
 
 ### Night Time - Action / Tower Defense
 
-The night time is a kind of tower defense idea, except that rather than killing the waves, the goal
-is to outlast them by scaring them away. Initially, the player has a torch, and runs around the map
-chasing aways the shadows that are incoming. Over the days, the player gets more powerful tools,
+The night time is a kind of survivors-lite idea, except that rather than killing the waves, the goal
+is to chase and trap them. Initially, the player has a torch, and runs around the map
+chasing the shadows that are incoming. Over the days, the player gets more powerful tools,
 like fireworks, "towers" and other tools that can change the routing of the wave ai.
 
-Every night, the shadows come to attack the base to attain its magic / alchemy, and the player has
-to chase them away. The player themself has no concept of health and cannot die. The game is lost
-if all the magic is stolen from the base. The shadows cannot die as well, just be chased away by
+Every night, the shadows come to attack the base to steal the philosophers stone, and the player has
+to chase them away / trap. The player themself has no concept of health and cannot die. The game is lost
+if all the magic is stolen from the base. The shadows can be trapped or be chased away by
 the player, or the other tools at their disposal. The basic idea is that the shadows are scared of
-light, and thus will run away from the player.
+light, and thus will run away from the player, and can be "herded" into their traps.
 
-The shadows will try to carry away the magic, and the player can still try to keep those shadows inside
+The shadows will try to carry away the stone, and the player can still try to keep those shadows inside
 the map till sunrise, in which case the damage will not be taken. This gives the player a second chance
 to prevent the base from taking damage.
 
-Over the course of the night, the player can also choose to try and trap some shadows, and convert
-them into djinns. This process will be a little bit time consuming, and have a risk-reward concept
-attached, and the reward is the use of that djinn during the day time. This ability needs to be unlocked.
+There is some strategy / risk-reward with the way that the player uses their traps. If all the shadows
+are trapped in one trap (or no djinns in one trap), then they get a bonus that will help them in daytime
+most likely in the form of more djinns to automate.
 
-Other ways that djinns can be obtained:
-- Protecting Djinn hotspots. Each night a small number of djinn hotspots will be generated over the
-map and the shadows will target those as well. If they survive the night, new djinn will be added to
-the day
+Additionally, the player can "summon" djinns in the marketplace, and they will also be on the map, and
+will be treated by the shadows just like how the stone is, where they will try to pick up the stone and
+run away. This added challenge allows the player to take a risky option that will help them more in
+daytime.
 
 ### Day - Night Interplay
 
 Ideas for Mechanics from one cycle that only affect the other cycle:
 1. Day: Using resources not for alchemy but for defense / magic points (base health)
 2. Day: Creating automation routes that are inefficient but provide blocking capabilities for waves ?
-3. Night: Capturing / converting shadows into djinns for automation
+3. Night: Summon djinns at night, and have to protect them from the shadows along with the stone.
 
 ### Balancing Knobs
 
@@ -150,6 +150,8 @@ These are the different knobs that can be tweaked to change the overall experien
 6. Time for conversions
 7. Length of nights
 8. Enemy wave scaling / Size, number of waves
+9. Recharge time for player
+10. Time for trap to kill shadow
 
 ---
 
@@ -195,3 +197,14 @@ The player survives if at the end of the night, there is still the bases magic o
 Make a basic prototype where both of the modes are somewhat fleshed out. I believe all the interesting
 things comes from the interplay between the modes, so its important to make sure that we are able
 to spend some time prototyping ideas there.
+
+There is no - very little focus on the graphics and sounds and things. Maybe just enough to give an
+idea of what it is. SImilarly, no UI polish. Keep UX as simple as possible. We want to make a prototype
+of the gameplay in one state.
+
+
+## Post Jam Goals
+If things work out well and the game feels like it is fun, and has room to grow, then figure out a
+way to add either meta-progression,  or a "campaign" mode. If either of those ideas bear fruit, then
+there is a compelling case to decide to make this into something to work on for ~9-12 months, and then
+release on Steam at a $5-$10 scope.
