@@ -8,6 +8,7 @@ const helpers = @import("helpers.zig");
 var haathi: Haathi = undefined;
 var game: Game = undefined;
 var start_ticks: u64 = 0;
+const BUILDER_MODE = build_options.builder_mode;
 
 // var web_allocator = std.heap.GeneralPurposeAllocator(.{}){};
 
@@ -45,4 +46,11 @@ export fn render() void {
     game.update(ticks);
     game.render();
     haathi.render();
+    // TODO (23 Jul 2024 sam): THis should be handled in game.update. not external like this...
+    if (BUILDER_MODE) {
+        if (game.ff_mode) {
+            for (0..5) |_| game.update(ticks);
+            game.ff_mode = false;
+        }
+    }
 }

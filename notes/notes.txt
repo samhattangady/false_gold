@@ -272,3 +272,33 @@ It has potential. At least enough for this jam. For the rest of today, we just
 want to do some polish things. Tomorrow, start combining the modes, and see
 how that goes.
 So timer for the trap. Okay, then animation for the shadow to disappear.
+
+---
+
+23 Jul 2024:
+Hi Sam. I think today the idea is to be able to get the whole game loop going.
+Very basic simple stuff. Just what we have now, but a way to do it all in game
+and not need any secret controls.
+
+1. Lose condition.
+2. Controls for building, pathing, djinns.
+3. switching between night and day.
+
+Okay. I think in that order. Lets go. Cool. Losting and resetting is now done.
+So next, the considerably harder part - the controls for building pathing and
+djinns. It means adding some kind of controls. So how should the controls
+look? Okay, I think I have an idea.
+
+Now that I think about it, technically, all will not be during day, but
+rather, at sunrise. So we dont have to "hide" the controls. They can be on
+screen. Thought at sunrise, we also want to be able to view the base as it is,
+so having some menu that blocks out the whole thing is not ideal. So the idea
+is the same, but we still need a thing that can do the whole thing.
+
+NEXT: Continue with all the menu conditions. We would need to add controls for
+handling djinn and deleting paths.
+Done. Start off with deleting paths then.
+
+I have to wonder whether it's an issue that there are two ways of inputting:
+with player, and with mouse. Thought maybe that's a problem for the full
+game...

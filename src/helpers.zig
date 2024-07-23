@@ -424,6 +424,8 @@ pub const Button = struct {
     released: bool = false,
     // when mouse was down in bounds and is still down.
     triggered: bool = false,
+    // a handle on what the button has to act on
+    index: usize = 0,
 
     pub fn contains(self: *const Self, pos: Vec2) bool {
         return self.rect.contains(pos);
@@ -592,6 +594,17 @@ pub fn lineSegmentsIntersect(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2) ?Vec2 {
     } else {
         return null;
     }
+}
+
+pub fn lineContains(p0: Vec2i, p1: Vec2i, point: Vec2i) bool {
+    const p_is_horizontal = p0.y == p1.y;
+    const p_fixed = p0.orthoFixed(p_is_horizontal);
+    const point_fixed = point.orthoFixed(p_is_horizontal);
+    if (p_fixed != point_fixed) return false;
+    const p_start = @min(p0.orthoVariable(p_is_horizontal), p1.orthoVariable(p_is_horizontal));
+    const p_end = @max(p0.orthoVariable(p_is_horizontal), p1.orthoVariable(p_is_horizontal));
+    const point_v = point.orthoVariable(p_is_horizontal);
+    return (p_start <= point_v) and (point_v <= p_end);
 }
 
 // assumes the lines are axis aligned
