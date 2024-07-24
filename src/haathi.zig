@@ -252,7 +252,7 @@ pub const DrawPolyOptions = struct {
     color: Vec4,
 };
 
-const TextAlignment = enum {
+pub const TextAlignment = enum {
     start,
     end,
     left,

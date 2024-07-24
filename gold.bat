@@ -1,6 +1,6 @@
 @echo off
 set library=zig-out\bin\haathi.wasm
-set out_folder=gold
+set out_folder=docs
 set src_folder=web
 set out_wasm=%out_folder%\haathi.wasm
 set out_html=%out_folder%\index.html

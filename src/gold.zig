@@ -60,6 +60,12 @@ const TRAP_INDICATOR_SIZE = TRAP_SIZE.x * 1.6;
 const ENERGY_DEFAULT_VALUE = 10;
 const FF_STEPS = 300;
 const EXTRA_FF_STEPS = 1000;
+const NIGHT_TICKS = 60 * 60;
+
+const COST_OF_MINE = 5;
+const COST_OF_TRAP = 3;
+const START_COST_OF_DJINN = 1;
+const START_GEMS = COST_OF_MINE;
 
 const DJINN_TICK_COUNT = 30;
 const build_options = @import("build_options");
@@ -313,7 +319,7 @@ const Path = struct {
     // if invalid, returns error point
     pub fn validPathPosition(self: *const Path, p0_opt: ?Vec2i, p1: Vec2i) ?Vec2i {
         if (p0_opt == null) return null;
-        if (self.points.items.len < 2) return null;
+        if (self.points.items.len == 0) return null;
         if (p1.equal(self.getLastOrNull().?)) return p1;
         const p0 = p0_opt.?;
         for (0..self.points.items.len - 1) |i| {
@@ -409,9 +415,9 @@ pub const Actor = struct {
 
 pub const Djinn = struct {
     position: Vec2,
-    address: Vec2i,
+    address: Vec2i = undefined,
     path: ?PathIndex = null,
-    cell_index: usize,
+    cell_index: usize = undefined,
     target_address: Vec2i = .{},
     anim_start_pos: Vec2 = .{},
     anim_end_pos: Vec2 = .{},
@@ -477,6 +483,10 @@ pub const DjinnSystem = struct {
         self.djinns.clearRetainingCapacity();
     }
 
+    pub fn addDjinn(self: *DjinnSystem) void {
+        self.djinns.append(.{ .position = SCREEN_SIZE.scale(2) }) catch unreachable;
+    }
+
     pub fn pathCount(self: *DjinnSystem, pkey: PathIndex) usize {
         var count: usize = 0;
         for (self.djinns.items()) |djinn| {
@@ -523,7 +533,7 @@ pub const DjinnSystem = struct {
     }
 
     pub fn availableDjinnCount(self: *DjinnSystem) usize {
-        const count: usize = 0;
+        var count: usize = 0;
         for (self.djinns.items()) |*djinn| {
             if (djinn.path == null) {
                 count += 1;
@@ -692,11 +702,25 @@ pub const ShadowSystem = struct {
 };
 
 pub const GameMode = enum {
+    new_game,
     sunrise,
     day,
     sunset,
     night,
     lost,
+
+    pub fn shouldShowStats(self: *const GameMode) bool {
+        return switch (self.*) {
+            .sunrise,
+            .day,
+            .sunset,
+            => true,
+            .new_game,
+            .night,
+            .lost,
+            => false,
+        };
+    }
 };
 
 // magical things that the shadows are trying to steal.
@@ -715,9 +739,11 @@ const MenuAction = enum {
     action_path_delete,
     action_djinn_remove,
     action_djinn_add,
+    action_start_game,
     action_start_day,
     action_start_night,
     action_ff_to_sunset,
+    action_summon_djinn,
     hide_menu,
 };
 
@@ -726,6 +752,7 @@ const MenuText = struct {
     text: []const u8,
     color: Vec4,
     font: []const u8 = FONTS[0],
+    alignment: haathi_lib.TextAlignment = .left,
 };
 
 const MenuItem = union(enum) {
@@ -754,6 +781,10 @@ pub const Game = struct {
     ff_to_sunset: bool = false,
     menu: std.ArrayList(MenuItem),
     contextual: std.ArrayList(MenuItem),
+    day_count: u16 = 0,
+    night_ticks: u16 = 0,
+    gems: usize = 0,
+    djinn_summon_cost: u32 = START_COST_OF_DJINN,
 
     allocator: std.mem.Allocator,
     arena_handle: std.heap.ArenaAllocator,
@@ -816,17 +847,19 @@ pub const Game = struct {
     }
 
     pub fn setup(self: *Game) void {
-        self.mode = .day;
+        self.mode = .new_game;
+        self.day_count = 0;
+        self.gems = START_GEMS;
+        self.djinn_summon_cost = START_COST_OF_DJINN;
         self.structures.append(.{ .structure = .base, .address = .{} }) catch unreachable;
-        self.structures.append(.{ .structure = .mine, .address = .{ .x = 6, .y = 3 } }) catch unreachable;
         self.world.setup();
-        self.setupSunriseMenu();
         {
             self.stone_index = self.spirits.getNextKey();
             self.spirits.append(.{ .position = .{ .x = 0 } }) catch unreachable;
         }
         self.setupContextual();
         for (self.structures.items()) |*str| str.setup(self.world);
+        self.setupNewGameMenu();
     }
 
     fn addShadows(self: *Game) void {
@@ -835,6 +868,161 @@ pub const Game = struct {
         self.shadows.addShadow(SCREEN_SIZE.scale(-0.5).add(.{ .x = 40 }));
         self.shadows.addShadow(SCREEN_SIZE.scale(0.5).add(.{ .y = 40 }));
         self.shadows.addShadow(SCREEN_SIZE.scale(0.5).add(.{ .x = 40 }));
+    }
+
+    fn setupNewGameMenu(self: *Game) void {
+        self.menu.clearRetainingCapacity();
+        const sx = SCREEN_SIZE.x;
+        const sy = SCREEN_SIZE.y;
+        self.menu.append(.{
+            .rect = .{
+                .position = .{ .x = sx * 0.3, .y = sy * 0.4 },
+                .size = .{ .x = sx * 0.4, .y = sy * 0.3 },
+            },
+        }) catch unreachable;
+        var current_pos = Vec2{ .x = sx * 0.3 + 20, .y = sy * 0.7 - 30 };
+        self.menu.append(.{
+            .text = .{
+                .text = "Extract Ore.",
+                .position = current_pos,
+                .color = colors.solarized_base3,
+            },
+        }) catch unreachable;
+        current_pos = current_pos.add(.{ .y = -40 });
+        self.menu.append(.{
+            .text = .{
+                .text = "Process and Purify till it turns Gold.",
+                .position = current_pos,
+                .color = colors.solarized_base3,
+            },
+        }) catch unreachable;
+        current_pos = current_pos.add(.{ .y = -40 });
+        self.menu.append(.{
+            .text = .{
+                .text = "WASD to move. Mouse click to do actions.",
+                .position = current_pos,
+                .color = colors.solarized_base3,
+            },
+        }) catch unreachable;
+        current_pos = current_pos.add(.{ .y = -40 });
+        self.menu.append(.{
+            .text = .{
+                .text = "You'll get the hang of it, I believe in you.",
+                .position = current_pos,
+                .color = colors.solarized_base3,
+            },
+        }) catch unreachable;
+        current_pos = current_pos.add(.{ .y = -40 });
+        self.menu.append(.{
+            .button = .{
+                .rect = .{
+                    .position = current_pos,
+                    .size = .{ .x = 200, .y = 25 },
+                },
+                .value = @intFromEnum(MenuAction.action_start_game),
+                .text = "Start Game",
+            },
+        }) catch unreachable;
+    }
+
+    fn setupSunriseMenu(self: *Game) void {
+        self.menu.clearRetainingCapacity();
+        const sx = SCREEN_SIZE.x;
+        const sy = SCREEN_SIZE.y;
+        self.menu.append(.{
+            .rect = .{
+                .position = .{ .x = sx * 0.3, .y = sy * 0.4 },
+                .size = .{ .x = sx * 0.4, .y = sy * 0.3 },
+            },
+        }) catch unreachable;
+        self.menu.append(.{
+            .text = .{
+                .text = "You survived the night.",
+                .position = .{ .x = sx * 0.5, .y = sy * 0.8 },
+                .color = colors.solarized_base03,
+            },
+        }) catch unreachable;
+        var current_pos = Vec2{ .x = sx * 0.3 + 20, .y = sy * 0.7 - 40 };
+        self.menu.append(.{
+            .button = .{
+                .rect = .{
+                    .position = current_pos,
+                    .size = .{ .x = 200, .y = 25 },
+                },
+                .value = @intFromEnum(MenuAction.set_mode_build_mine),
+                .text = "Build Mine",
+                .enabled = self.gems >= self.getMenuActionCost(@intFromEnum(MenuAction.set_mode_build_mine)).?,
+            },
+        }) catch unreachable;
+        if (self.day_count > 0) {
+            current_pos = current_pos.add(.{ .y = -40 });
+            self.menu.append(.{
+                .button = .{
+                    .rect = .{
+                        .position = current_pos,
+                        .size = .{ .x = 200, .y = 25 },
+                    },
+                    .value = @intFromEnum(MenuAction.set_mode_path_create),
+                    .text = "Create Path",
+                },
+            }) catch unreachable;
+            current_pos = current_pos.add(.{ .y = -40 });
+            self.menu.append(.{
+                .button = .{
+                    .rect = .{
+                        .position = current_pos,
+                        .size = .{ .x = 200, .y = 25 },
+                    },
+                    .value = @intFromEnum(MenuAction.set_mode_path_delete),
+                    .text = "Delete Path",
+                },
+            }) catch unreachable;
+            current_pos = current_pos.add(.{ .y = -40 });
+            self.menu.append(.{
+                .button = .{
+                    .rect = .{
+                        .position = current_pos,
+                        .size = .{ .x = 200, .y = 25 },
+                    },
+                    .value = @intFromEnum(MenuAction.set_mode_djinn_manage),
+                    .text = "Manage Djinn",
+                },
+            }) catch unreachable;
+            current_pos = current_pos.add(.{ .y = -40 });
+            self.menu.append(.{
+                .button = .{
+                    .rect = .{
+                        .position = current_pos,
+                        .size = .{ .x = 200, .y = 25 },
+                    },
+                    .value = @intFromEnum(MenuAction.action_summon_djinn),
+                    .enabled = self.gems >= self.getMenuActionCost(@intFromEnum(MenuAction.action_summon_djinn)).?,
+                    .text = "Summon Djinn",
+                },
+            }) catch unreachable;
+        }
+        current_pos = Vec2{ .x = sx * 0.3 + 300, .y = sy * 0.7 - 40 };
+        self.menu.append(.{
+            .button = .{
+                .rect = .{
+                    .position = current_pos,
+                    .size = .{ .x = 200, .y = 25 },
+                },
+                .value = @intFromEnum(MenuAction.hide_menu),
+                .text = "View World",
+            },
+        }) catch unreachable;
+        current_pos = current_pos.add(.{ .y = -40 });
+        self.menu.append(.{
+            .button = .{
+                .rect = .{
+                    .position = current_pos,
+                    .size = .{ .x = 200, .y = 25 },
+                },
+                .value = @intFromEnum(MenuAction.action_start_day),
+                .text = "Start Day",
+            },
+        }) catch unreachable;
     }
 
     fn setupSunsetMenu(self: *Game) void {
@@ -859,10 +1047,11 @@ pub const Game = struct {
             .button = .{
                 .rect = .{
                     .position = current_pos,
-                    .size = .{ .x = 160, .y = 25 },
+                    .size = .{ .x = 200, .y = 25 },
                 },
                 .value = @intFromEnum(MenuAction.set_mode_build_trap),
                 .text = "Build Trap",
+                .enabled = self.gems >= self.getMenuActionCost(@intFromEnum(MenuAction.set_mode_build_trap)).?,
             },
         }) catch unreachable;
         current_pos = current_pos.add(.{ .y = -40 });
@@ -870,95 +1059,10 @@ pub const Game = struct {
             .button = .{
                 .rect = .{
                     .position = current_pos,
-                    .size = .{ .x = 160, .y = 25 },
+                    .size = .{ .x = 200, .y = 25 },
                 },
                 .value = @intFromEnum(MenuAction.action_start_night),
                 .text = "Start Night",
-            },
-        }) catch unreachable;
-    }
-
-    fn setupSunriseMenu(self: *Game) void {
-        self.menu.clearRetainingCapacity();
-        const sx = SCREEN_SIZE.x;
-        const sy = SCREEN_SIZE.y;
-        self.menu.append(.{
-            .text = .{
-                .text = "You survived the night.",
-                .position = .{ .x = sx * 0.5, .y = sy * 0.8 },
-                .color = colors.solarized_base03,
-            },
-        }) catch unreachable;
-        self.menu.append(.{
-            .rect = .{
-                .position = .{ .x = sx * 0.3, .y = sy * 0.4 },
-                .size = .{ .x = sx * 0.4, .y = sy * 0.3 },
-            },
-        }) catch unreachable;
-        var current_pos = Vec2{ .x = sx * 0.3 + 20, .y = sy * 0.7 - 40 };
-        self.menu.append(.{
-            .button = .{
-                .rect = .{
-                    .position = current_pos,
-                    .size = .{ .x = 160, .y = 25 },
-                },
-                .value = @intFromEnum(MenuAction.set_mode_build_mine),
-                .text = "Build Mine",
-            },
-        }) catch unreachable;
-        current_pos = current_pos.add(.{ .y = -40 });
-        self.menu.append(.{
-            .button = .{
-                .rect = .{
-                    .position = current_pos,
-                    .size = .{ .x = 160, .y = 25 },
-                },
-                .value = @intFromEnum(MenuAction.set_mode_path_create),
-                .text = "Create Path",
-            },
-        }) catch unreachable;
-        current_pos = current_pos.add(.{ .y = -40 });
-        self.menu.append(.{
-            .button = .{
-                .rect = .{
-                    .position = current_pos,
-                    .size = .{ .x = 160, .y = 25 },
-                },
-                .value = @intFromEnum(MenuAction.set_mode_path_delete),
-                .text = "Delete Path",
-            },
-        }) catch unreachable;
-        current_pos = current_pos.add(.{ .y = -40 });
-        self.menu.append(.{
-            .button = .{
-                .rect = .{
-                    .position = current_pos,
-                    .size = .{ .x = 160, .y = 25 },
-                },
-                .value = @intFromEnum(MenuAction.set_mode_djinn_manage),
-                .text = "Manage Djinn",
-            },
-        }) catch unreachable;
-        current_pos = current_pos.add(.{ .y = -40 });
-        self.menu.append(.{
-            .button = .{
-                .rect = .{
-                    .position = current_pos,
-                    .size = .{ .x = 160, .y = 25 },
-                },
-                .value = @intFromEnum(MenuAction.action_start_day),
-                .text = "Start Day",
-            },
-        }) catch unreachable;
-        current_pos = Vec2{ .x = sx * 0.3 + 200, .y = sy * 0.7 - 40 };
-        self.menu.append(.{
-            .button = .{
-                .rect = .{
-                    .position = current_pos,
-                    .size = .{ .x = 160, .y = 25 },
-                },
-                .value = @intFromEnum(MenuAction.hide_menu),
-                .text = "View World",
             },
         }) catch unreachable;
     }
@@ -1097,10 +1201,12 @@ pub const Game = struct {
         switch (action) {
             .none, .hide_menu => {},
             .set_mode_build_mine => {
+                if (self.gems < COST_OF_MINE) return;
                 self.builder.mode = .build;
                 self.builder.structure = .mine;
             },
             .set_mode_build_trap => {
+                if (self.gems < COST_OF_TRAP) return;
                 self.builder.mode = .build;
                 self.builder.structure = .trap;
             },
@@ -1128,6 +1234,10 @@ pub const Game = struct {
                 self.djinns.addToPath(.{ .index = index }, self);
                 self.setupContextual();
             },
+            .action_start_game => {
+                self.mode = .sunrise;
+                self.setupSunriseMenu();
+            },
             .action_start_day => {
                 self.startDay();
                 self.setupContextual();
@@ -1139,12 +1249,23 @@ pub const Game = struct {
                 self.startNight();
                 self.setupContextual();
             },
+            .action_summon_djinn => {
+                if (self.gems < self.djinn_summon_cost) return;
+                self.djinns.addDjinn();
+                self.gems -= self.djinn_summon_cost;
+                // TODO (24 Jul 2024 sam): Have a more sophisticated cost increase curve.
+                self.djinn_summon_cost += 2;
+                self.resetMenu();
+            },
         }
     }
 
     fn startNight(self: *Game) void {
+        self.day_count += 1;
         self.mode = .night;
         self.addShadows();
+        self.spirits.getPtr(self.stone_index).position = GRID_CELL_SIZE.scale(0.5);
+        self.night_ticks = 0;
     }
 
     fn forwardToSunset(self: *Game) void {
@@ -1248,14 +1369,23 @@ pub const Game = struct {
         self.mode = .sunrise;
         self.setupSunriseMenu();
         self.setupContextual();
+        self.day_count += 1;
     }
 
     fn startSunset(self: *Game) void {
         self.ff_to_sunset = false;
         self.mode = .sunset;
         self.djinns.ff_steps = 0;
+        self.gems += self.inventory[0];
+        self.inventory = [_]u16{0} ** RESOURCE_COUNT;
         self.setupContextual();
         self.setupSunsetMenu();
+        self.resources.clearRetainingCapacity();
+    }
+
+    fn resetMenu(self: *Game) void {
+        if (self.mode == .sunrise) self.setupSunriseMenu();
+        if (self.mode == .sunset) self.setupSunsetMenu();
     }
 
     // updateGame
@@ -1326,6 +1456,7 @@ pub const Game = struct {
                 }
             },
             .night => {
+                self.night_ticks += 1;
                 self.player.action_available = null;
                 self.shadows.update(self);
                 for (self.structures.items()) |*str| str.update(self);
@@ -1342,7 +1473,7 @@ pub const Game = struct {
             .lost => {
                 if (self.haathi.inputs.getKey(.enter).is_clicked) self.reset();
             },
-            .sunrise, .sunset => {
+            .sunrise, .sunset, .new_game => {
                 switch (self.builder.mode) {
                     .menu => {},
                     .path_create => {
@@ -1382,13 +1513,14 @@ pub const Game = struct {
                     },
                     .build => {
                         if (self.haathi.inputs.getKey(.r).is_clicked) self.builder.orientation = self.builder.orientation.next();
-                        // TODO (20 Jul 2024 sam): Should also check no collisions with other slots / paths?
                         self.builder.can_build = self.canBuild(self.builder.structure, mouse_address);
                         if (self.haathi.inputs.mouse.l_button.is_clicked and self.builder.can_build) {
                             const skey = self.structures.getNextKey();
                             self.structures.append(.{ .structure = self.builder.structure, .address = mouse_address, .orientation = self.builder.orientation }) catch unreachable;
+                            self.gems -= self.getStructureCost(self.builder.structure);
                             self.structures.getPtr(skey).setup(self.world);
                             self.builder.mode = .menu;
+                            self.resetMenu();
                         }
                         if (self.haathi.inputs.getKey(.escape).is_clicked) {
                             self.builder.mode = .menu;
@@ -1405,7 +1537,7 @@ pub const Game = struct {
                                 self.doMenuAction(@enumFromInt(item.button.value), item.button.index);
                             }
                         }
-                        if (!self.builder.hide_menu and item.button.value == @intFromEnum(MenuAction.hide_menu)) self.builder.hide_menu = item.button.hovered;
+                        if (!self.builder.hide_menu and item.button.value == @intFromEnum(MenuAction.hide_menu)) self.builder.hide_menu = item.button.hovered or item.button.triggered;
                     }
                 }
                 for (self.contextual.items) |*item| {
@@ -1430,7 +1562,7 @@ pub const Game = struct {
                 return self.isOrePatch(address) and self.getStructure(address) == null;
             },
             .trap => {
-                return self.getStructure(address) == null and self.validPathPosition(null, address) == null;
+                return self.getSlot(address) == null and self.getStructure(address) == null and self.validPathPosition(null, address) == null and !self.isOrePatch(address);
             },
             .base => unreachable,
         }
@@ -1450,8 +1582,8 @@ pub const Game = struct {
     }
 
     fn checkWinScenario(self: *Game) void {
-        // TODO (23 Jul 2024 sam): Add night timer
-        if (self.shadows.allDead()) {
+        const complete = self.night_ticks > NIGHT_TICKS;
+        if (self.shadows.allDead() or complete) {
             self.startSunrise();
         }
     }
@@ -1467,6 +1599,17 @@ pub const Game = struct {
         for (self.structures.keys()) |skey| {
             const str = self.structures.getPtr(skey);
             if (str.address.equal(address)) return skey;
+        }
+        return null;
+    }
+
+    fn getSlot(self: *Game, address: Vec2i) ?SlotType {
+        for (self.structures.keys()) |skey| {
+            const str = self.structures.getPtr(skey);
+            if (address.distancei(str.address) != 1) continue;
+            const slot_orientation = Orientation.getRelative(str.address, address);
+            const slot_opt = str.slots[slot_orientation.toIndex()];
+            return slot_opt;
         }
         return null;
     }
@@ -1499,6 +1642,9 @@ pub const Game = struct {
     pub fn validPathPosition(self: *Game, p0_opt: ?Vec2i, p1: Vec2i) ?Vec2i {
         // TODO (20 Jul 2024 sam): Check intersections with structures.
         if (p0_opt) |p0| {
+            for (self.structures.items()) |str| {
+                if (helpers.lineContains(p0, p1, str.address)) return str.address;
+            }
             for (self.paths.items()) |path| {
                 if (path.validPathPosition(p0, p1)) |point| return point;
             }
@@ -1506,6 +1652,9 @@ pub const Game = struct {
         } else {
             for (self.paths.items()) |path| {
                 if (path.pathContains(p1)) |point| return point;
+            }
+            for (self.structures.items()) |str| {
+                if (str.address.equal(p1)) return str.address;
             }
             return null;
         }
@@ -1596,6 +1745,35 @@ pub const Game = struct {
         }
     }
 
+    fn getStructureCost(self: *Game, st: StructureType) usize {
+        _ = self;
+        return switch (st) {
+            .base => 0,
+            .mine => COST_OF_MINE,
+            .trap => COST_OF_TRAP,
+        };
+    }
+
+    fn getMenuActionCost(self: *Game, action_value: u8) ?usize {
+        const action: MenuAction = @enumFromInt(action_value);
+        switch (action) {
+            .set_mode_build_mine => return COST_OF_MINE,
+            .set_mode_build_trap => return COST_OF_TRAP,
+            .action_summon_djinn => return self.djinn_summon_cost,
+            else => return null,
+        }
+    }
+
+    fn drawCross(self: *Game, address: Vec2i) void {
+        const cent = self.world.gridCenter(address);
+        const nw = self.world.gridCenter(address.add(.{ .x = -1, .y = 1 }));
+        const ne = self.world.gridCenter(address.add(.{ .x = 1, .y = 1 }));
+        const sw = self.world.gridCenter(address.add(.{ .x = -1, .y = -1 }));
+        const se = self.world.gridCenter(address.add(.{ .x = 1, .y = -1 }));
+        self.haathi.drawLine(.{ .p0 = nw.lerp(cent, 0.6), .p1 = se.lerp(cent, 0.6), .color = colors.solarized_red, .width = 12 });
+        self.haathi.drawLine(.{ .p0 = ne.lerp(cent, 0.6), .p1 = sw.lerp(cent, 0.6), .color = colors.solarized_red, .width = 12 });
+    }
+
     pub fn render(self: *Game) void {
         // background
         self.haathi.drawRect(.{
@@ -1676,7 +1854,6 @@ pub const Game = struct {
             const p1 = self.builder.target;
             self.haathi.drawLine(.{ .p0 = self.world.gridCenter(p0), .p1 = self.world.gridCenter(p1), .color = colors.solarized_yellow.alpha(0.2), .width = 10 });
         }
-        if (self.builder.invalid) |cell| self.drawCellInset(cell, 0, colors.solarized_red);
         for (self.djinns.djinns.items()) |djinn| {
             self.haathi.drawRect(.{
                 .position = djinn.position.add(DJINN_SIZE.scale(-0.5)),
@@ -1704,12 +1881,15 @@ pub const Game = struct {
             //    .color = colors.solarized_orange,
             //});
         }
+        if (self.builder.invalid) |cell| {
+            self.drawCross(cell);
+        }
         if (self.builder.mode == .build) {
             var temp_str = Structure{ .address = mouse_address, .orientation = self.builder.orientation, .structure = self.builder.structure };
             temp_str.setup(self.world);
             self.drawStructure(temp_str);
             if (!self.builder.can_build) {
-                self.drawCellInset(mouse_address, 6, colors.solarized_red);
+                self.drawCross(mouse_address);
             }
         }
         if (self.mode == .day and self.djinns.ff_steps > 0) {
@@ -1832,6 +2012,15 @@ pub const Game = struct {
             const energy: f32 = @as(f32, @floatFromInt(self.player.actor.energy)) / @as(f32, @floatFromInt(self.player.actor.total_energy));
             self.haathi.drawLine(.{ .p0 = start, .p1 = start.lerp(end, energy), .width = 20, .color = colors.solarized_base3 });
         }
+        if (self.mode == .night) {
+            // timer
+            const start = Vec2{ .x = 122, .y = 20 };
+            const end = Vec2{ .x = SCREEN_SIZE.x - (GRID_CELL_SIZE.x * 1) - 2, .y = 20 };
+            self.haathi.drawText(.{ .text = "Night:", .position = .{ .x = start.x - 8, .y = 14 }, .color = colors.solarized_base03, .alignment = .right });
+            self.haathi.drawLine(.{ .p0 = start.add(.{ .x = -2 }), .p1 = end.add(.{ .x = 2 }), .width = 25, .color = colors.solarized_base3 });
+            const progress: f32 = @as(f32, @floatFromInt(self.night_ticks)) / @as(f32, @floatFromInt(NIGHT_TICKS));
+            self.haathi.drawLine(.{ .p0 = start, .p1 = start.lerp(end, progress), .width = 20, .color = colors.solarized_base03 });
+        }
         for (self.contextual.items) |item| {
             switch (item) {
                 .button => |button| {
@@ -1844,11 +2033,11 @@ pub const Game = struct {
                     self.haathi.drawRect(.{ .position = rect.position, .size = rect.size, .color = colors.solarized_base02, .radius = 4 });
                 },
                 .text => |text| {
-                    self.haathi.drawText(.{ .text = text.text, .position = text.position, .color = text.color });
+                    self.haathi.drawText(.{ .text = text.text, .position = text.position, .color = text.color, .alignment = text.alignment });
                 },
             }
         }
-        if (self.mode == .sunrise or self.mode == .sunset) {
+        if (self.mode == .sunrise or self.mode == .sunset or self.mode == .new_game) {
             if (!self.builder.hide_menu) {
                 self.haathi.drawRect(.{
                     .position = .{},
@@ -1858,23 +2047,47 @@ pub const Game = struct {
                 for (self.menu.items) |item| {
                     switch (item) {
                         .button => |button| {
+                            const alpha: f32 = if (button.enabled) 1 else 0.4;
                             const color = if (button.hovered) colors.solarized_base01.lerp(colors.solarized_base3, 0.4) else colors.solarized_base01;
-                            self.haathi.drawRect(.{ .position = button.rect.position, .size = button.rect.size, .color = color, .radius = 4 });
-                            const text_center = button.rect.position.add(button.rect.size.scaleVec2(.{ .x = 0.5, .y = 1 }).add(.{ .y = -18 }));
-                            self.haathi.drawText(.{ .text = button.text, .position = text_center, .color = colors.solarized_base3 });
+                            self.haathi.drawRect(.{ .position = button.rect.position, .size = button.rect.size, .color = color.alpha(alpha), .radius = 4 });
+                            const text_pos = button.rect.position.add(button.rect.size.scaleVec2(.{ .x = 0.0, .y = 1 }).add(.{ .x = 8, .y = -18 }));
+                            self.haathi.drawText(.{ .text = button.text, .position = text_pos, .color = colors.solarized_base3.alpha(alpha), .alignment = .left });
+                            if (self.getMenuActionCost(button.value)) |value| {
+                                const text = std.fmt.allocPrintZ(self.haathi.arena, "[{d} gems]", .{value}) catch unreachable;
+                                self.haathi.drawText(.{
+                                    .text = text,
+                                    .position = button.rect.position.add(button.rect.size.scaleVec2(.{ .x = 1, .y = 1 }).add(.{ .y = -18 })),
+                                    .color = colors.solarized_base3.alpha(alpha),
+                                    .style = FONTS[1],
+                                    .alignment = .right,
+                                });
+                            }
                         },
                         .rect => |rect| {
                             self.haathi.drawRect(.{ .position = rect.position, .size = rect.size, .color = colors.solarized_base02, .radius = 4 });
                         },
                         .text => |text| {
-                            self.haathi.drawText(.{ .text = text.text, .position = text.position, .color = text.color });
+                            self.haathi.drawText(.{ .text = text.text, .position = text.position, .color = text.color, .alignment = text.alignment });
                         },
                     }
                 }
             }
         }
-        const inventory = std.fmt.allocPrintZ(self.haathi.arena, "Ore: {d}", .{self.inventory[0]}) catch unreachable;
-        self.haathi.drawText(.{ .text = inventory, .position = .{ .x = 60, .y = 50 }, .color = colors.solarized_base03 });
+        if (self.mode.shouldShowStats()) {
+            const x_start = GRID_CELL_SIZE.x;
+            {
+                const text = std.fmt.allocPrintZ(self.haathi.arena, "Gems: {d}", .{self.gems}) catch unreachable;
+                self.haathi.drawText(.{ .text = text, .position = .{ .x = x_start, .y = 75 }, .color = colors.solarized_base03, .alignment = .left });
+            }
+            {
+                const text = std.fmt.allocPrintZ(self.haathi.arena, "Djinn: {d} / {d}", .{ self.djinns.availableDjinnCount(), self.djinns.djinns.count() }) catch unreachable;
+                self.haathi.drawText(.{ .text = text, .position = .{ .x = x_start, .y = 100 }, .color = colors.solarized_base03, .alignment = .left });
+            }
+            {
+                const text = std.fmt.allocPrintZ(self.haathi.arena, "Ore: {d}", .{self.inventory[0]}) catch unreachable;
+                self.haathi.drawText(.{ .text = text, .position = .{ .x = x_start, .y = 50 }, .color = colors.solarized_base03, .alignment = .left });
+            }
+        }
         if (false) { // testing lerp
             const center = Vec2i{};
             const target = center.orthoTarget(mouse_address);

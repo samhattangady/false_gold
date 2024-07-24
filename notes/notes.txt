@@ -315,3 +315,10 @@ think we have to change things a bit.
 
 NEXT: Prevent building on slots. Otherwise continue working. Things are going
 well =D
+
+Okay. Prevent building on slots and paths. Also make sure that paths cannot
+pass through other structures. There is on bug with the pathing, but I think
+its okay.
+Im just trying to think about how the economy works, and I think it would make
+sense if processed things are worth a lot more than the raw materials, so that
+there is an exponential buildup of value.
