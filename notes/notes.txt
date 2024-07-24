@@ -302,3 +302,16 @@ Done. Start off with deleting paths then.
 I have to wonder whether it's an issue that there are two ways of inputting:
 with player, and with mouse. Thought maybe that's a problem for the full
 game...
+
+---
+
+24 Jul 2024:
+Right. So what is it that we would like to accomplish today. I think just
+finish off the whole chain. And then get the nights to reset. Then we can
+further figure out how we want the things to work.
+
+So we want player to do action from some steps away. So how to do that? I
+think we have to change things a bit.
+
+NEXT: Prevent building on slots. Otherwise continue working. Things are going
+well =D

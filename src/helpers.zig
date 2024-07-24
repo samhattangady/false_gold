@@ -246,6 +246,14 @@ pub const Vec2i = struct {
         return absx + absy;
     }
 
+    // TODO (24 Jul 2024 sam): Test this to see if its correct. Its correct for 1 cell away
+    // Meant to calculate "ranges" where diagonal is also one step.
+    pub fn diagDistance(v: *const Self, v1: Self) usize {
+        const absx = @abs(v.x - v1.x);
+        const absy = @abs(v.y - v1.y);
+        return @max(absx, absy);
+    }
+
     pub fn numSteps(v: *const Self) usize {
         const absx = @abs(v.x);
         const absy = @abs(v.y);
