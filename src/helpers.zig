@@ -49,6 +49,15 @@ pub const Orientation = enum {
         if (source.y < address.y) return .n;
         unreachable;
     }
+
+    pub fn vec(self: *const Orientation) Vec2 {
+        return switch (self.*) {
+            .n => .{ .x = 0, .y = 1 },
+            .e => .{ .x = 1, .y = 0 },
+            .s => .{ .x = 0, .y = -1 },
+            .w => .{ .x = -1, .y = 0 },
+        };
+    }
 };
 
 pub const Vec2 = struct {

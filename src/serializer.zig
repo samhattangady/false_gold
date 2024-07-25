@@ -322,6 +322,9 @@ fn deserializeType(data: anytype, value: std.json.Value, options: Deserializatio
 
 pub fn deserializeStruct(comptime T: type, data: *T, value: std.json.Value, options: DeserializationOptions) void {
     helpers.assert(@typeInfo(T) == .Struct);
+    // TODO (25 Jul 2024 sam): Create a struct with all the default values as they may be. It should not
+    // overwrite things that are to be ignored (not in serializer_fields) etc. Maybe we just do this for
+    // the standard all_fields case.
     {
         @setEvalBranchQuota(100000);
         const init_fields = [_][]const u8{ "array_list.ArrayListAligned", "hash_map.HashMap" };

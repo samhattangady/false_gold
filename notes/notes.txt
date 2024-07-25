@@ -343,3 +343,6 @@ about that later.
  So there is an issue now, that if there is already a good that works.
  What's the next thing? I think we might want to implement saving so that
  testing becomes a bit easier.
+
+ I think the next step is to make a new structure that allows for combining
+ into bigger things.
