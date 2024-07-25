@@ -22,3 +22,6 @@ pub extern fn loadSound(path: [*]const u8, loop: bool) void;
 pub extern fn playSound(path: [*]const u8, restart: bool) void;
 pub extern fn pauseSound(path: [*]const u8) void;
 pub extern fn setSoundVolume(path: [*]const u8, volume: f32) void;
+pub extern fn webSave(key: [*]const u8, key_len: usize, data: [*]const u8, data_len: usize) void;
+pub extern fn webLoadLen(key: [*]const u8, key_len: usize) usize;
+pub extern fn webLoad(key: [*]const u8, key_len: usize, data_ptr: [*]u8, data_len: usize) void;

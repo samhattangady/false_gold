@@ -88,6 +88,17 @@ const wasmString = (ptr) => {
   return str;
 }
 
+// TODO (25 Jul 2024 sam): There's probably a neater way to do this.
+const wasmStringLen = (ptr, len) => {
+  const bytes = new Uint8Array(memory.buffer, ptr, memory.buffer.byteLength-ptr);
+  let str = '';
+  for (let i = 0; i<len; i++) {
+    const c = String.fromCharCode(bytes[i]);
+    str += c;
+  }
+  return str;
+}
+
 const clearCanvas = (color) => {
   ctx.fillStyle = wasmString(color);
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -217,6 +228,28 @@ const setSoundVolume = (raw_sound_path, volume) => {
   sounds[sound_path].volume = volume;
 }
 
+const webSave = (key, key_len, data, data_len) => {
+  const key_name = wasmStringLen(key, key_len);
+  const data_str = wasmStringLen(data, data_len);
+  window.localStorage.setItem(key_name, data_str);
+  console.log("saving", key_name, data_str);
+}
+
+const webLoadLen = (key, key_len) => {
+  const key_name = wasmStringLen(key, key_len);
+  const data = window.localStorage.getItem(key_name);
+  return data.length;
+}
+
+const webLoad = (key, key_len, data_ptr, data_len) => {
+  const key_name = wasmStringLen(key, key_len);
+  const data = window.localStorage.getItem(key_name);
+  const fileContents = new Uint8Array(memory.buffer, data_ptr, data_len);
+  for (let i=0; i<data_len; i++) {
+    fileContents[i] = data.charCodeAt(i);
+  }
+}
+
 var api = {
   fillRect,
   roundRect,
@@ -242,4 +275,7 @@ var api = {
   playSound,
   pauseSound,
   setSoundVolume,
+  webSave,
+  webLoad,
+  webLoadLen,
 };

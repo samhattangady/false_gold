@@ -3,6 +3,7 @@ const c = @import("interface.zig");
 const inputs = @import("inputs.zig");
 const MouseState = inputs.MouseState;
 const SCREEN_SIZE = @import("haathi.zig").SCREEN_SIZE;
+const serializer = @import("serializer.zig");
 
 pub const Orientation = enum {
     n,
@@ -699,6 +700,17 @@ pub fn assert(condition: bool) void {
     if (!condition) unreachable; // assertion failed.
 }
 
+pub fn webSave(key: []const u8, data: []const u8) void {
+    c.webSave(key.ptr, key.len, data.ptr, data.len);
+}
+
+pub fn webLoad(key: []const u8, allocator: std.mem.Allocator) []const u8 {
+    const data_len = c.webLoadLen(key.ptr, key.len);
+    const data = allocator.alloc(u8, data_len) catch unreachable;
+    c.webLoad(key.ptr, key.len, data.ptr, data_len);
+    return data;
+}
+
 /// ConstKey is a useful key that can be used for the ConstIndexArray
 /// It has a few methods like equal, serialization etc.
 /// It needs a unique string as input so that the compiler knows that
@@ -759,29 +771,26 @@ pub fn ConstIndexArray(comptime Key: type, comptime T: type) type {
             self.counter = 0;
         }
 
-        // pub fn serialize(self: *const Self, js: *serializer.JsonSerializer) !void {
-        //     for (self.keys()) |key| {
-        //         var buffer: [8]u8 = undefined;
-        //         const key_name = std.fmt.bufPrint(buffer[0..], "{d}", .{key.index}) catch unreachable;
-        //         const val = self.getPtr(key);
-        //         try js.objectField(key_name);
-        //         try js.beginObject();
-        //         try val.serialize(js);
-        //         try js.endObject();
-        //     }
-        // }
+        pub fn serialize(self: *const Self, js: *serializer.JsonSerializer) !void {
+            for (self.keys()) |key| {
+                var buffer: [8]u8 = undefined;
+                const key_name = std.fmt.bufPrint(buffer[0..], "{d}", .{key.index}) catch unreachable;
+                const val = self.getPtr(key);
+                try serializer.serialize(key_name, val.*, js);
+            }
+        }
 
-        // pub fn deserialize(self: *@This(), js: std.json.Value, options: serializer.DeserializationOptions) void {
-        //     var list_keys = js.object.iterator();
-        //     while (list_keys.next()) |pair| {
-        //         const key = pair.key_ptr.*;
-        //         var val: T = undefined;
-        //         const index = Key{ .index = std.fmt.parseInt(usize, key, 10) catch unreachable };
-        //         val.deserialize(js.object.get(key).?, options);
-        //         self.map.put(index, val) catch unreachable;
-        //         if (index.index + 1 > self.counter) self.counter = index.index + 1;
-        //     }
-        // }
+        pub fn deserialize(self: *@This(), js: std.json.Value, options: serializer.DeserializationOptions) void {
+            var list_keys = js.object.iterator();
+            while (list_keys.next()) |pair| {
+                const key = pair.key_ptr.*;
+                var val: T = undefined;
+                const index = Key{ .index = std.fmt.parseInt(usize, key, 10) catch unreachable };
+                serializer.deserialize(null, &val, js.object.get(key).?, options);
+                self.map.put(index, val) catch unreachable;
+                if (index.index + 1 > self.counter) self.counter = index.index + 1;
+            }
+        }
 
         pub fn getNextKey(self: *Self) Key {
             // TODO (29 Jan 2024 sam): If we change this design to give a recently

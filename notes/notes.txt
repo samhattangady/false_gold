@@ -322,3 +322,24 @@ its okay.
 Im just trying to think about how the economy works, and I think it would make
 sense if processed things are worth a lot more than the raw materials, so that
 there is an exponential buildup of value.
+
+---
+
+25 Jul 2024:
+I think we got the things all working yesterday. Today we need to think about
+scaling, and how day and night complement each other. I like the idea of
+having base slots. So the base can only have a few things that you can do at
+night. So there is a choice that you have to make. Typically choose between
+whether you want nights to be easier or days to scale harder.
+Right now what is the call that we want to make? Or maybe again we can see
+about that later.
+ 
+ Whats the first thing to work on. HOw about we keep it simple, and add a key
+ to get more gems? Also I really don't like that everything has to be done at
+ sunset, and we cant build more during the day. That kinda sucks. The night
+ thing and sunset is okay I think, but the day thing I don't like. So
+ basically we need to do the whole menu thing in daytime also.
+
+ So there is an issue now, that if there is already a good that works.
+ What's the next thing? I think we might want to implement saving so that
+ testing becomes a bit easier.
