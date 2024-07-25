@@ -166,7 +166,16 @@ pub const Haathi = struct {
                 },
                 .sprite => |sprite| {
                     const sx = sprite.sprite.anchor.x;
-                    c.drawImage(sprite.sprite.path[0..].ptr, sx, sprite.sprite.anchor.y, sprite.sprite.size.x, sprite.sprite.size.y, sprite.position.x, sprite.position.y, sprite.sprite.size.x * sprite.scale.x, sprite.sprite.size.y * sprite.scale.y);
+                    var position = sprite.position;
+                    switch (sprite.anchor) {
+                        .top_left => {},
+                        .center => {
+                            position.x -= sprite.sprite.size.x * sprite.scale.x * 0.5;
+                            position.y -= sprite.sprite.size.y * sprite.scale.y * 0.5;
+                        },
+                    }
+                    const scale = sprite.scale;
+                    c.drawImage(sprite.sprite.path[0..].ptr, sx, sprite.sprite.anchor.y, sprite.sprite.size.x, sprite.sprite.size.y, position.x, position.y, sprite.sprite.size.x * scale.x, sprite.sprite.size.y * scale.y);
                 },
             }
         }
@@ -285,4 +294,6 @@ pub const DrawSpriteOptions = struct {
     position: Vec2,
     scale: Vec2 = .{ .x = 1, .y = 1 },
     anchor: SpriteAnchor = .top_left,
+    x_flipped: bool = false,
+    y_flipped: bool = false,
 };

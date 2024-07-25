@@ -191,7 +191,10 @@ const drawImage = (raw_image_path, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHei
     //document.body.appendChild(image);
     console.log(image);
   }
-  ctx.drawImage(image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight);
+  ctx.save();
+  ctx.transform(1, 0, 0, -1, 0, canvas.height)
+  ctx.drawImage(image, sx, sy, sWidth, sHeight, dx, canvas.height-dy, dWidth, -dHeight);
+  ctx.restore();
 }
 
 // this approach means that a single sound can have only one instance at one time.

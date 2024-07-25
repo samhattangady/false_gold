@@ -346,3 +346,7 @@ about that later.
 
  I think the next step is to make a new structure that allows for combining
  into bigger things.
+
+ So ideally, gameplay - when you esc, the game should pause, and you should be
+ able to move djinn around.
+ Also a splitter. We might also need to shrink the size of cells.

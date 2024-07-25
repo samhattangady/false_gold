@@ -34,14 +34,14 @@ const PLAYER_SIZE = Vec2{ .x = 20, .y = 30 };
 const PLAYER_LIGHT_RADIUS = 45;
 const PLAYER_LIGHT_RADIUS_SQR = PLAYER_LIGHT_RADIUS * PLAYER_LIGHT_RADIUS;
 const PLAYER_LIGHT_SIZE = Vec2{ .x = PLAYER_LIGHT_RADIUS * 2, .y = PLAYER_LIGHT_RADIUS * 2 };
-const PLAYER_ACT_RANGE = 1;
+const PLAYER_ACT_RANGE = 2;
 const SPIRIT_LIGHT_RADIUS = 25;
 const SPIRIT_LIGHT_RADIUS_SQR = SPIRIT_LIGHT_RADIUS * SPIRIT_LIGHT_RADIUS;
 const SPIRIT_LIGHT_SIZE = Vec2{ .x = SPIRIT_LIGHT_RADIUS * 2, .y = SPIRIT_LIGHT_RADIUS * 2 };
 const SPIRIT_SIZE = Vec2{ .x = 10, .y = 10 };
 const DJINN_SIZE = Vec2{ .x = 16, .y = 22 };
 const SHADOW_SIZE = Vec2{ .x = 16, .y = 22 };
-const GRID_SIZE = Vec2i{ .x = 32, .y = 18 };
+const GRID_SIZE = Vec2i{ .x = 48, .y = 28 };
 const GRID_CELL_SIZE = Vec2{
     .x = SCREEN_SIZE.x / @as(f32, @floatFromInt(GRID_SIZE.x)),
     .y = SCREEN_SIZE.y / @as(f32, @floatFromInt(GRID_SIZE.y)),
@@ -62,6 +62,7 @@ const ENERGY_DEFAULT_VALUE = 10;
 const FF_STEPS = 300;
 const EXTRA_FF_STEPS = 1000;
 const NIGHT_TICKS = 60 * 60;
+const RESOURCE_ANIMATION_TICKS = DJINN_TICK_COUNT;
 
 const COST_OF_MINE = 5;
 const COST_OF_TRAP = 3;
@@ -69,9 +70,17 @@ const COST_OF_COMBINER = 10;
 const START_COST_OF_DJINN = 1;
 const START_GEMS = COST_OF_MINE;
 
-const DJINN_TICK_COUNT = 30;
+const DJINN_TICK_COUNT = 15;
 const build_options = @import("build_options");
 const BUILDER_MODE = build_options.builder_mode;
+const ORE_START_OFFSET = Vec2{ .x = 38, .y = 44 };
+const ORE_ANIMATION_OFFSETS = [8]f32{ 0, 2, 11, 9, 0, 2, 11, 9 };
+
+const ORE_SPRITES = [_]haathi_lib.Sprite{
+    .{ .path = "/img/ore0.png", .anchor = .{}, .size = .{ .x = 18, .y = 20 } },
+    .{ .path = "/img/ore0.png", .anchor = .{}, .size = .{ .x = 18, .y = 20 } },
+    .{ .path = "/img/ore1.png", .anchor = .{}, .size = .{ .x = 18, .y = 20 } },
+};
 
 // TODO (23 Jul 2024 sam): lol
 const NUMBER_STR = [_][]const u8{ "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49" };
@@ -286,8 +295,36 @@ const ResourceType = enum {
 const RESOURCE_COUNT = @typeInfo(ResourceType).Enum.fields.len;
 
 const Resource = struct {
+    address: Vec2i,
     resource: ResourceType,
-    position: Vec2i,
+    start_pos: Vec2,
+    end_pos: Vec2,
+    start_scale: f32,
+    end_scale: f32,
+    progress: usize = 0,
+    position: Vec2,
+    scale: f32,
+
+    pub fn create(rsc: ResourceType, start: Vec2i, end: Vec2i, created: bool, world: World) Resource {
+        return .{
+            .resource = rsc,
+            .address = end,
+            .start_pos = world.gridCenter(start),
+            .end_pos = world.gridCenter(end),
+            .start_scale = if (created) 0 else 1,
+            .end_scale = if (created) 1 else 0,
+            .position = world.gridCenter(start),
+            .scale = if (created) 0 else 1,
+        };
+    }
+
+    pub fn update(self: *Resource) void {
+        self.progress += 1;
+        if (self.progress > RESOURCE_ANIMATION_TICKS) return;
+        const t: f32 = @as(f32, @floatFromInt(self.progress)) / RESOURCE_ANIMATION_TICKS;
+        self.position = self.start_pos.lerp(self.end_pos, t);
+        self.scale = helpers.lerpf(self.start_scale, self.end_scale, t);
+    }
 };
 
 const Path = struct {
@@ -479,6 +516,10 @@ pub const Djinn = struct {
             return;
         }
         self.position = self.anim_start_pos.lerp(self.anim_end_pos, t);
+    }
+
+    pub fn movingLeft(self: *const Djinn) bool {
+        return self.anim_end_pos.x < self.anim_start_pos.x;
     }
 };
 
@@ -806,13 +847,14 @@ pub const Game = struct {
     day_count: u16 = 0,
     night_ticks: u16 = 0,
     gems: usize = 0,
+    steps: usize = 0,
     djinn_summon_cost: u32 = START_COST_OF_DJINN,
 
     allocator: std.mem.Allocator,
     arena_handle: std.heap.ArenaAllocator,
     arena: std.mem.Allocator,
 
-    pub const serialize_fields = [_][]const u8{ "ticks", "world", "resources", "structures", "paths", "spirits", "inventory", "djinns", "shadows", "player", "builder", "mode", "stone_index", "ff_mode", "ff_to_sunset", "menu", "contextual", "day_count", "night_ticks", "gems", "djinn_summon_cost" };
+    pub const serialize_fields = [_][]const u8{ "ticks", "steps", "world", "resources", "structures", "paths", "spirits", "inventory", "djinns", "shadows", "player", "builder", "mode", "stone_index", "ff_mode", "ff_to_sunset", "menu", "contextual", "day_count", "night_ticks", "gems", "djinn_summon_cost" };
 
     pub fn init(haathi: *Haathi) Game {
         const allocator = haathi.allocator;
@@ -1203,15 +1245,20 @@ pub const Game = struct {
 
     fn hasResource(self: *const Game, address: Vec2i) ?ResourceType {
         for (self.resources.items) |rsc| {
-            if (rsc.position.equal(address)) return rsc.resource;
+            if (rsc.address.equal(address)) return rsc.resource;
         }
         return null;
     }
 
-    fn removeResource(self: *Game, address: Vec2i) void {
-        for (self.resources.items, 0..) |rsc, i| {
-            if (rsc.position.equal(address)) {
-                _ = self.resources.swapRemove(i);
+    fn removeResource(self: *Game, address: Vec2i, end_address: Vec2i) void {
+        for (self.resources.items) |*rsc| {
+            if (rsc.address.equal(address)) {
+                rsc.address = .{ .x = 10000, .y = 10000 };
+                rsc.start_pos = rsc.position;
+                rsc.end_pos = self.world.gridCenter(end_address);
+                rsc.start_scale = 1;
+                rsc.end_scale = 0;
+                rsc.progress = 0;
                 return;
             }
         }
@@ -1228,7 +1275,7 @@ pub const Game = struct {
                 helpers.assert(has_resource != null);
                 actor.carrying = has_resource;
                 actor.energy -= 1;
-                self.removeResource(action.address);
+                self.removeResource(action.address, action.address);
             },
             .dropoff => {
                 const has_resource = self.hasResource(action.address);
@@ -1236,8 +1283,9 @@ pub const Game = struct {
                 helpers.assert(actor.carrying != null);
                 if (str.structure == .base) {
                     self.inventory[@intFromEnum(actor.carrying.?)] += 1;
+                    self.resources.append(Resource.create(actor.carrying.?, action.address, str.address, false, self.world)) catch unreachable;
                 } else {
-                    self.resources.append(.{ .resource = actor.carrying.?, .position = action.address }) catch unreachable;
+                    self.resources.append(Resource.create(actor.carrying.?, action.address, action.address, true, self.world)) catch unreachable;
                 }
                 actor.carrying = null;
             },
@@ -1248,16 +1296,17 @@ pub const Game = struct {
                         const output_spot = str.address.add(str.orientation.toDir());
                         const has_resource = self.hasResource(output_spot);
                         helpers.assert(has_resource == null);
-                        self.resources.append(.{ .resource = .lead, .position = output_spot }) catch unreachable;
+                        self.resources.append(Resource.create(.lead, str.address, output_spot, true, self.world)) catch unreachable;
                         actor.energy -= 1;
                     },
                     .combiner => {
                         const d0_has_resource = self.hasResource(str.address.add(str.orientation.opposite().toDir()));
                         const d1_has_resource = self.hasResource(str.address.add(str.orientation.opposite().next().toDir()));
                         const new_resource = ResourceType.fromValue(d0_has_resource.?.value() + d1_has_resource.?.value());
-                        self.resources.append(.{ .resource = new_resource, .position = str.address.add(str.orientation.toDir()) }) catch unreachable;
-                        self.removeResource(str.address.add(str.orientation.opposite().toDir()));
-                        self.removeResource(str.address.add(str.orientation.opposite().next().toDir()));
+                        self.resources.append(Resource.create(new_resource, str.address, str.address.add(str.orientation.toDir()), true, self.world)) catch unreachable;
+                        self.removeResource(str.address.add(str.orientation.opposite().toDir()), str.address);
+                        self.removeResource(str.address.add(str.orientation.opposite().next().toDir()), str.address);
+                        actor.energy -= 1;
                     },
                     .base => unreachable,
                     .trap => unreachable,
@@ -1501,6 +1550,7 @@ pub const Game = struct {
     // updateGame
     pub fn update(self: *Game, ticks: u64) void {
         // clear the arena and reset.
+        self.steps += 1;
         _ = self.arena_handle.reset(.retain_capacity);
         self.arena = self.arena_handle.allocator();
         self.ticks = ticks;
@@ -1525,6 +1575,14 @@ pub const Game = struct {
         self.player.clampVelocity();
         self.player.updatePosition(self.world);
         if (!moving) self.player.dampVelocity();
+        {
+            var to_remove = std.ArrayList(usize).init(self.haathi.arena);
+            for (self.resources.items, 0..) |*ra, i| {
+                ra.update();
+                if (ra.progress >= RESOURCE_ANIMATION_TICKS and ra.end_scale == 0) to_remove.insert(0, i) catch unreachable;
+            }
+            for (to_remove.items) |ri| _ = self.resources.swapRemove(ri);
+        }
         if (BUILDER_MODE) {
             if (self.haathi.inputs.getKey(.num_1).is_down) self.ff_mode = true;
             if (self.haathi.inputs.getKey(.q).is_clicked) {
@@ -1534,6 +1592,7 @@ pub const Game = struct {
                 self.loadGame();
             }
         }
+        self.haathi.setCursor(.auto);
         switch (self.mode) {
             .day => {
                 self.player.action_available = null;
@@ -1553,6 +1612,7 @@ pub const Game = struct {
                 self.djinns.update(self);
                 self.checkDayComplete();
                 if (self.ff_to_sunset) {
+                    self.haathi.setCursor(.progress);
                     if (self.djinns.energyRemaining()) {
                         for (0..self.djinns.ff_steps) |_| {
                             self.djinns.update(self);
@@ -1973,11 +2033,10 @@ pub const Game = struct {
         for (self.structures.items()) |str| {
             self.drawStructure(str);
         }
+        const frame: f32 = @floatFromInt((self.steps / 8) % 8);
+        const djinn_sprite_walking = haathi_lib.Sprite{ .path = "/img/djinn_walking.png", .anchor = .{ .x = 64 * frame }, .size = .{ .x = 64, .y = 64 } };
+        const djinn_sprite_carrying = haathi_lib.Sprite{ .path = "/img/djinn_carrying.png", .anchor = .{ .x = 64 * frame }, .size = .{ .x = 64, .y = 64 } };
         // draw resources
-        for (self.resources.items) |rsc| {
-            self.drawCellInset(rsc.position, 12, colors.solarized_orange);
-            self.haathi.drawText(.{ .text = NUMBER_STR[rsc.resource.value()], .position = self.world.gridCenter(rsc.position), .color = colors.white.alpha(0.5), .style = FONTS[1] });
-        }
         const mouse_address = self.world.toGridCell(self.world.fromScreenPos(self.haathi.inputs.mouse.current_pos));
         if (self.player.action_available != null and self.player.action_available.?.can_be_done) {
             self.drawCellBorder(mouse_address, 4, colors.solarized_base03);
@@ -2010,11 +2069,25 @@ pub const Game = struct {
         }
         for (self.djinns.djinns.items()) |djinn| {
             const alpha: f32 = if (djinn.actor.energy == 0 and djinn.actor.carrying == null) 0.4 else 1;
-            self.haathi.drawRect(.{
-                .position = djinn.position.add(DJINN_SIZE.scale(-0.5)),
-                .size = DJINN_SIZE,
-                .color = colors.solarized_magenta.alpha(alpha),
+            const sprite = spr: {
+                if (djinn.actor.carrying == null) {
+                    break :spr djinn_sprite_walking;
+                } else {
+                    break :spr djinn_sprite_carrying;
+                }
+            };
+            const dj_position = djinn.position.add(sprite.size.scale(-0.5)).add(.{ .y = 10 });
+
+            self.haathi.drawSprite(.{
+                .sprite = sprite,
+                .position = dj_position,
+                .x_flipped = djinn.movingLeft(),
             });
+            // self.haathi.drawRect(.{
+            //     .position = djinn.position.add(DJINN_SIZE.scale(-0.5)),
+            //     .size = DJINN_SIZE,
+            //     .color = colors.solarized_magenta.alpha(alpha),
+            // });
             { //energy
                 const start = djinn.position.add(.{ .x = (-GRID_CELL_SIZE.x / 2) + 3, .y = (-GRID_CELL_SIZE.y / 2) + 5 });
                 const end = djinn.position.add(.{ .x = (GRID_CELL_SIZE.x / 2) - 3, .y = (-GRID_CELL_SIZE.y / 2) + 5 });
@@ -2033,15 +2106,21 @@ pub const Game = struct {
                 });
             }
             if (djinn.actor.carrying) |rsc| {
-                const rpos = djinn.position.add(DJINN_SIZE.scale(-0.5)).add(DJINN_SIZE.yVec()).add(DJINN_SIZE.xVec().scale(0.5));
-                self.haathi.drawRect(.{
-                    .position = rpos,
-                    .size = .{ .x = 12, .y = 12 },
-                    .color = colors.solarized_orange,
-                    .centered = true,
+                const framei: usize = @intFromFloat(frame);
+                self.haathi.drawSprite(.{
+                    .position = dj_position.add(ORE_START_OFFSET).add(.{ .x = 0, .y = ORE_ANIMATION_OFFSETS[framei] }),
+                    .sprite = ORE_SPRITES[rsc.value()],
                 });
-                self.haathi.drawText(.{ .text = NUMBER_STR[rsc.value()], .position = rpos, .color = colors.white.alpha(0.5), .style = FONTS[1] });
+                //self.haathi.drawText(.{ .text = NUMBER_STR[rsc.value()], .position = rpos, .color = colors.white.alpha(0.5), .style = FONTS[1] });
             }
+        }
+        for (self.resources.items) |rsc| {
+            self.haathi.drawSprite(.{
+                .position = rsc.position,
+                .sprite = ORE_SPRITES[rsc.resource.value()],
+                .scale = .{ .x = rsc.scale, .y = rsc.scale },
+                .anchor = .center,
+            });
         }
         if (self.builder.mode != .menu) self.haathi.drawText(.{ .text = @tagName(self.builder.mode), .position = self.haathi.inputs.mouse.current_pos, .color = colors.solarized_base03 });
         if (self.builder.mode == .loop_create) {
@@ -2163,11 +2242,11 @@ pub const Game = struct {
             .size = PLAYER_SIZE,
             .color = colors.solarized_red,
         });
-        if (self.player.actor.carrying) |_| {
-            self.haathi.drawRect(.{
-                .position = self.world.toScreenPos(self.player.position).add(PLAYER_SIZE.scale(-0.5)).add(PLAYER_SIZE.yVec()).add(PLAYER_SIZE.xVec().scale(0.5)).add(.{ .x = -6, .y = -6 }),
-                .size = .{ .x = 12, .y = 12 },
-                .color = colors.solarized_orange,
+        if (self.player.actor.carrying) |rsc| {
+            self.haathi.drawSprite(.{
+                .position = self.world.toScreenPos(self.player.position).add(PLAYER_SIZE.scale(-0.5)).add(PLAYER_SIZE.yVec()).add(PLAYER_SIZE.xVec().scale(0.5)),
+                .sprite = ORE_SPRITES[rsc.value()],
+                .anchor = .center,
             });
         }
         self.haathi.drawText(.{
