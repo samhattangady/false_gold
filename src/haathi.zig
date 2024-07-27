@@ -127,12 +127,14 @@ pub const Haathi = struct {
                 },
                 .path => |path| {
                     path.color.toHexRgba(color_buffer[0..]);
+                    const ox = path.offset.x;
+                    const oy = path.offset.y;
                     c.strokeStyle(color_buffer[0..].ptr);
                     c.lineWidth(path.width);
                     c.beginPath();
-                    c.moveTo(path.points[0].x, path.points[0].y);
+                    c.moveTo(path.points[0].x + ox, path.points[0].y + oy);
                     for (path.points) |point| {
-                        c.lineTo(point.x, point.y);
+                        c.lineTo(point.x + ox, point.y + oy);
                     }
                     if (path.closed) c.closePath();
                     c.stroke();
@@ -148,11 +150,13 @@ pub const Haathi = struct {
                 },
                 .poly => |poly| {
                     poly.color.toHexRgba(color_buffer[0..]);
+                    const ox = poly.offset.x;
+                    const oy = poly.offset.y;
                     c.fillStyle(color_buffer[0..].ptr);
                     c.beginPath();
-                    c.moveTo(poly.points[0].x, poly.points[0].y);
+                    c.moveTo(poly.points[0].x + ox, poly.points[0].y + oy);
                     for (poly.points) |point| {
-                        c.lineTo(point.x, point.y);
+                        c.lineTo(point.x + ox, point.y + oy);
                     }
                     c.closePath();
                     c.fill();
@@ -253,11 +257,13 @@ pub const DrawPathOptions = struct {
     points: []const Vec2,
     color: Vec4,
     width: f32 = 5,
+    offset: Vec2 = .{},
     closed: bool = false,
 };
 
 pub const DrawPolyOptions = struct {
     points: []const Vec2,
+    offset: Vec2 = .{},
     color: Vec4,
 };
 

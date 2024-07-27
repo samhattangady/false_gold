@@ -681,12 +681,21 @@ pub fn linesIntersectNotStart(p0: Vec2i, p1: Vec2i, q0: Vec2i, q1: Vec2i) ?Vec2i
     }
 }
 
-pub fn pointToLineDistanceSqr(point: Vec2, line: Line) f32 {
+// pub fn pointToLineDistanceSqr(point: Vec2, line: Line) f32 {
+//     // TODO (21 Jul 2023 sam): Check if this works. Copied over...
+//     const l_sqr = line.p0.distanceSqr(line.p1);
+//     if (l_sqr == 0.0) return line.p0.distanceSqr(point);
+//     const t = std.math.clamp(point.subtract(line.p0).dot(line.p1.subtract(line.p0)) / l_sqr, 0.0, 1.0);
+//     const projected = line.p0.add(line.p1.subtract(line.p0).scale(t));
+//     return point.distanceSqr(projected);
+// }
+
+pub fn pointToLineDistanceSqr(point: Vec2, p0: Vec2, p1: Vec2) f32 {
     // TODO (21 Jul 2023 sam): Check if this works. Copied over...
-    const l_sqr = line.p0.distanceSqr(line.p1);
-    if (l_sqr == 0.0) return line.p0.distanceSqr(point);
-    const t = std.math.clamp(point.subtract(line.p0).dot(line.p1.subtract(line.p0)) / l_sqr, 0.0, 1.0);
-    const projected = line.p0.add(line.p1.subtract(line.p0).scale(t));
+    const l_sqr = p0.distanceSqr(p1);
+    if (l_sqr == 0.0) return p0.distanceSqr(point);
+    const t = std.math.clamp(point.subtract(p0).dot(p1.subtract(p0)) / l_sqr, 0.0, 1.0);
+    const projected = p0.add(p1.subtract(p0).scale(t));
     return point.distanceSqr(projected);
 }
 
@@ -713,8 +722,9 @@ pub fn webSave(key: []const u8, data: []const u8) void {
     c.webSave(key.ptr, key.len, data.ptr, data.len);
 }
 
-pub fn webLoad(key: []const u8, allocator: std.mem.Allocator) []const u8 {
+pub fn webLoad(key: []const u8, allocator: std.mem.Allocator) ?[]const u8 {
     const data_len = c.webLoadLen(key.ptr, key.len);
+    if (data_len == 0) return null;
     const data = allocator.alloc(u8, data_len) catch unreachable;
     c.webLoad(key.ptr, key.len, data.ptr, data_len);
     return data;

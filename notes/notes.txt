@@ -350,3 +350,92 @@ about that later.
  So ideally, gameplay - when you esc, the game should pause, and you should be
  able to move djinn around.
  Also a splitter. We might also need to shrink the size of cells.
+
+ ---
+
+ 26 Jul 2024:
+ Okay. I think that today we really need to work on the night time things.
+ So the main thing that we need to work out is how to scale.
+ So this current lamp thing is not really working. The next idea is that we
+ build lamps that point in a direction?
+
+ I think the main issue is that we don't have a clear way idea of how to
+ continue building out this mode. We may need a fresh start. What would the
+ opposite of this be? Neednt be opposite, but whats another way that we can
+ make this work.
+
+ What else can we do with the idea of shadows. Something action top down.
+ WHat else is even there in action top down? I'm trying to think if there is
+ anything else that happens there. The one idea that I have is that standard
+ top down shadow casting kinda thing. But what do we do with that? I don't
+ have a fun action mechanic with that really.
+ The other idea is light bouncing somehow. Again, action need not actually be
+ running around and doing things. Its just some amount of randomness and time
+ pressure. So that there is no one solution, and exectution actually matters.
+
+ Lets think about some kind of grid based idea? So maybe it could be capturing
+ shadows, and have some kind of score attack thing? But that's not really
+ action, and I would prefer action. I also think that I have to give up the
+ non violent thing.
+
+ Lets think a little more about shadows from a top down perspective. Are
+ shadows going to be _scared_ of light, or be attracted to it? Or have some
+ other complex feeling? What would shadows want? Lets not be limited by the
+ controls that we have. What are some of the other things that we can do?
+
+ Shadows are an absence of light. So what if you somehow are controlling the
+ shadows? WHat would that look and feel and play like. What are some of the
+ things you migth want to be doing then?
+ Maybe the player releases shadows around them everywhere they go. And the
+ people attacking are carrying torches. But the torches are directional. So
+ you need to "attack" them from behind, otherwise the shadows will get
+ destroyed.
+ But there are also other ways to destroy the shadows. Then the enemies will
+ need a more sophisticated thing.
+
+ I don't know it feels kinda stealth like, but I don't know how it builds. So
+ lets keep thinking. I like the idea of the vision cones kinda idea though.
+ Maybe we keep the same idea, except instead of just having light, we have to
+ put out the fires / lamps that they bring.
+
+ What about the idea that lamps are where djinns are stored. So maybe there's
+ an interesting thing to do there. So djinns get trapped in lamps. What does
+ that mean. How does it match with some of the things that we have. Maybe the
+ djinns hate lamps, and so will attack them. Or maybe it means that the enemy
+ come and trap the djinn.
+
+ Again, what we are looking for is a mechanic. Running away from light doesn't
+ feel like it works. Something that ideally matches with the kind of things
+ that we have. That means, something that matches with how the buildings and
+ paths are laid out.
+
+ Tower defense just seems like it makes a lot of sense there. I want to have
+ some kind of idea of shadows thouhg. Maybe it could be like a thing that
+ light blocks the paths, and restricts it. So you can use lights to make the
+ path tougher. How do you beat the things thouhg? Would that also be tower
+ defense? What if we have something like plants v zombies.
+
+ pinball? snake? Snake is a good idea, but I'm thinking of something else now.
+
+ Basically, whenever you choose, you can start to create a trail of fire, and
+ then when that closes, everything inside it gets acted on. destroyed or
+ whatever.
+
+ ---
+
+ 27 Jul 2024:
+ Okay nice. We have laid out some more details with the gdd. That should be
+ helpful. We need some 2d physics engine maybe? We have to choose whether we
+ want to use a physics framework or write it ourselves. In this case, I don't
+ know if we should do it for ourselves for the prototype. We should just use
+ something that exists. Okay.
+
+ Okay, it looks like the things dont work on wasm. So that's out. Lets search
+ a bit more? I don't think any of these work for wasm. I guess we then try to
+ roll our own. I don't think it'll be hard neccessarily, just that we have to
+ do the thing. I think for now, just run n^2 loops, and worry about the other
+ shit later. Cool.
+
+ So what to do now. First update the shadows to the new behaviour.
+For today:
+- if you complete a loop, kill the shadows inside

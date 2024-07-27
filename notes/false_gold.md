@@ -12,6 +12,8 @@ Decisions in one mode affect the other mode, and keeping that balance in mind is
 1. False Gold
 2. Alchemists Apprentice
 3. Djinn Mob
+4. Shadows and Alchemy
+5. Philosphically Stoned ?
 
 ---
 
@@ -19,9 +21,9 @@ Decisions in one mode affect the other mode, and keeping that balance in mind is
 
 The day mode - strategy / logistics - will be automation/idle, where you divide your djinns
 between different tasks, some which help your game-goals, and some which help your night goals.
-The night mode - action - will be simplistic tower defense based. But rather than killing the
-"enemies", you will scare them away with light. Over time, you can build up various defenses
-that make the whole set of tasks easier.
+The night mode - action - will be simplistic wave defense based. The night mode will involve a
+certain amount of strategy, so you can defend against enemies in different ways based on the
+resources / bonuses you require.
 
 Doing better in the night will allow you to have more djinns/automatons, which gives you more
 strategic depth during the day, which overall forms a tight loop between the two game modes.
@@ -34,9 +36,9 @@ So there will be tradeoffs between being efficient with the automation, and havi
 to make the night time defenses easier.
 
 The night time is a fixed time period. Either 60-90 seconds fixed, or something that is wave based,
-where each wave adds to the timer. Since the task is to do with keeping the shadow fiends away (as
-opposed to killing them), the difficulty scale might have a slightly different balance. Each night
-will get consecutively more difficult, with continous scaling.
+where each wave adds to the timer. The difficulty scaling will ideally come partly through larger
+numbers / sizes of waves, and also from the daytime automation structures, which will be a hindrance
+of some kind at night.
 
 The end goal of the game would be to synthesise gold, which is a daytime task. Once the gold has been
 synthesised, the player wins. Synthesising gold would require a large number of operations that have
@@ -50,7 +52,7 @@ The day time is about _Alchemy_, specifically about converting base metals into 
 by combining smaller/lesser metals into greater ones. 
 
 The night time is about protecting the base from
-_Shadows_. As the shadowy figures attack, they cannot be attacked, and need to be chased away by light.
+_Shadows_. As the shadowy figures attack, they cannot be attacked, and need to be dealt with by light.
 
 I choose to interpret the _and_ to be significant as well. So the game has two different modes of play
 which have a deep connection with each other mechanically.
@@ -73,63 +75,93 @@ the compelling thing will still remain compelling.
 
 So the pitch for me is: Make a casual version of a hardcore niche, but strongly link it to a more
 established genre / well understood target audience. So the casual version of Factorio is not an
-automation game, but a tower defense with automation elements. While there are many games like this,
-I don't believe many of them explicitly pitch this as a solution to the problem as stated by HTMAG.
+automation game, but a tower defense with automation elements. This game is trying to build on
+that thesis.
+
+## Tools
+The game will be made with ziglang using the [haathi](https://github.com/samhattangady/haathi) engine.
+
+The game will target the web as a platform.
+
+Graphics will be made in aseprite.
+
+Audio will not be a focus for the prototype, so exploration still needs to be done.
 
 ---
+
 
 ## Gameplay
 
 The game will be a top down 2d game, where you control the player avatar with wasd keys, and mouse.
 Depending on day and night there will be differences in the contextual controls, but to whatever
-extent possible, the same mechanics will also exist, with different effects. Ex. in day time, you can
+extent possible, the same mechanics will also exist, with different effects. 
+For ex. in day time, if you can
 throw materials to move them around, in night time you can throw fireworks to chase away shadows.
 
 ### Day Time - Logistics / Strategy
 
 The basic concept of day time, is that the player is trying to synthesise gold. This involves
-mining for metals, and going through a number of steps, slowly transforming it into higher and
+mining for metals, and going through a number of processing steps, slowly transforming it into higher and
 higher levels, until the final gold is reached. Each level will require multiple items of the
 previous level. So if the chain is lead-copper-iron-aluminium-silver-gold, then copper will need
 4 (say) lead, and iron will need 3 (say) copper. So eventually gold will required maybe ~1000 lead.
+
+In day time, the world will be grid based. Each structure will occupy a few grid cells. Structures
+will have action slots attached to them, for example to obtain ore, build a mine. The mine will have
+one cell for "action", which in this case would cause a unit of ore to be created on the "pickup" cell.
+So the mine will take up three cells. These two actions, mining and lifting ore, will consume energy.
 
 The idea is that every step in the process - mining, transporting and processing will take a certain
 amount of energy from the player. The automation comes from making the djinn do these tasks instead
 of the player. Each djinn will have a smaller amount of energy per day than the player, but over
 time, enough djinn means that a large amount of work can be done by them, and new work by the player.
+So overall, energy is a limited resource, and winning the game will require creating enough djinn so
+that all the required tasks can be completed over the course of a single day.
+
+Djinns can either be purchased at the start of the day, or by performing the night time defense in
+specific ways.
+
+To automate the djinn, the player will create a path that passes through the different action stations,
+and assign djinn on that path. As the djinn pass over the action grid cells, it will perform the actions.
+So for example- a path that goes through the `mine` cell, `pickup` cell and `base` cell will have
+the djinn do mining, lift the ore, and drop it off at the base.
+
+Paths cannot interesect with each other, so space will be at a premium, and that is a part of the challenge
+of setting up the entire automation chain.
 
 Every night, the alchemy progress is reset. So carrying things into the next day is not possible.
 The only way to succeed at the game would be to have enough djinn automating all the tasks so that
 all the metals are collected and processed over the course of a single day.
 
-But the progress made each day is not lost. All the processing done gives alchemical points, which
-will allow you to buy things that help at night time.
+But the progress made each day is not lost. All the resource collected will give gems, which
+will allow you to buy things that help at night time. More processed resources give exponentially
+more gems.
 
-### Night Time - Action / Tower Defense
+### Night Time - Action / Wave Defense
 
-The night time is a kind of survivors-lite idea, except that rather than killing the waves, the goal
-is to chase and trap them. Initially, the player has a torch, and runs around the map
-chasing the shadows that are incoming. Over the days, the player gets more powerful tools,
-like fireworks, "towers" and other tools that can change the routing of the wave ai.
+The night time is a kind of wave defense idea. Enemies (shadows) will spawn within and around the base.
+To get rid of them, the player needs to trap then in a fire trail. The player will run around creating
+a trail of fire behind them. The shadows will bounce off this trail. If the trail intersects with itself
+then, at that point, all the things that are enclosed in the shape will be acted upon.
 
-Every night, the shadows come to attack the base to steal the philosophers stone, and the player has
-to chase them away / trap. The player themself has no concept of health and cannot die. The game is lost
-if all the magic is stolen from the base. The shadows can be trapped or be chased away by
-the player, or the other tools at their disposal. The basic idea is that the shadows are scared of
-light, and thus will run away from the player, and can be "herded" into their traps.
+So if the player encloses only shadows, then they will get destroyed. But enclosing more shadows will
+be more beneficial. If a structure (like a mine built in daytime) is enclosed, then it will also
+get damaged. There will also be special night time structures built, that have an effect. For example
+if you build a trap, and enclose the trap structure along with shadows, then those shadows will get
+trapped and converted into djinn.
 
-The shadows will try to carry away the stone, and the player can still try to keep those shadows inside
-the map till sunrise, in which case the damage will not be taken. This gives the player a second chance
-to prevent the base from taking damage.
+Additionally, there will be some kind of optional ways to destroy the shadows, which will give other
+benefits, either for night time or day time. For example, catch exactly 2 a-type shadows and 1 b-type
+shadow, and earn 100 gems.
 
-There is some strategy / risk-reward with the way that the player uses their traps. If all the shadows
-are trapped in one trap (or no djinns in one trap), then they get a bonus that will help them in daytime
-most likely in the form of more djinns to automate.
+The shadows themselves just aimlessly bounce around. If they hit any structure, then the structure takes
+damage. So when there are more structures tightly packed, then a single shadow can bounce around them
+and do a lot of damage. The shadows do not damage the player.
 
-Additionally, the player can "summon" djinns in the marketplace, and they will also be on the map, and
-will be treated by the shadows just like how the stone is, where they will try to pick up the stone and
-run away. This added challenge allows the player to take a risky option that will help them more in
-daytime.
+The player has a fixed number of loops per night. Everytime they enclose, if something is enclosed
+(including a structure), then that loop is retained. Otherwise the loop is wasted. If the player
+runs out of loops, then all the shadows in the scene will home in and attack the base. If the base
+is destroyed, the player loses the game.
 
 ### Day - Night Interplay
 
@@ -146,50 +178,27 @@ These are the different knobs that can be tweaked to change the overall experien
 2. Recipes for higher level products - more or less ingredients required
 3. Value of processed goods / cost of defense tools
 4. Relative speed of shadows compared to player
-5. Weapon power scaling / How scared shadows are of the light
-6. Time for conversions
-7. Length of nights
-8. Enemy wave scaling / Size, number of waves
-9. Recharge time for player
-10. Time for trap to kill shadow
+5. Length of trail - how to increase
+6. Enemy wave scaling / Size, number of waves
 
----
+#### Difficulty Scaling
 
-## Detailed Mechanics Breakdown
+Day time difficulty scaling is mostly intrinsic. As you build more structures and paths, since
+paths and structures cannot intersect, the placements will have to get more thoughtful over time.
+Additionally djinn will get more expensive over time, so the value of djinn keeps increasing.
+Maybe there is also some kind of maintenance cost with djinn, so that you want to avoid collecting
+them at night if that's the position you are in.
 
-### Night time
-The goal at night time is to keep the magic safe. The shadow warriors are afraid of light
-and their goal is to steal the magic at the main base. The player themselves emits some light, so
-running towards the shadows makes them scared of you, and they will then run away from you. But since
-its light they are afraid of, they might also accidentally run towards your base, so theres a balance
-there to take care of. Once the warrior has been hit by light, they will keep moving in the same direction
-for a small duration at an increased speed, and following that, they will continue trying to steal the
-magic.
+Every night, the overall difficulty of the game needs to increase. We do this in a few way:
+1. Increased number of shadows / waves
+2. More structures are harder to defend, so more running around trying to keep things safe.
+3. A longer trail will also be harder to control, as you might accidentally intersect with yourself
+4. Faster shadow speed
 
-The warriors do not attack / harm the player in any way. When the player "scares" away the warrior, the
-warrior attracts all of the players light towards itself, as long as it is within the players range.
-So if there is a group of warriors coming together, then they will attract the focus of the light, and
-the player has to be more strategic in how they move.
-
-To eliminate a warrior, the player can "chase" them into a trap. The trap will take some amount of
-time to remove the warrior, so will be unusable at that point. So for that duration, the player has
-to chase away the other warriors and keep the things safe.
-
-If the shadow warrior reaches the base, they will steal the magic, and start moving away.
-If the player hits them with light again, the magic will be dropped, and slowly move back towards base.
-So as long as the warrior doesn't get away, the magic remains in bounds, and the player is successful
-in their defense.
-
-To help themself, the player may also use lamps. These can be picked up from the automation structures
-the same way that the player picks up ore during the day. Lamps have a fixed time for which they are
-lit. The player can then carry them around, which increases their light output, thus their effective
-radius of impact. The player can also place down lights at the structures (except base) which will
-keep away the shadows from there as long as the light is lit.
-
-Night lasts for a fixed known amount of time or until all the warriors have been eliminated.
-The player survives if at the end of the night, there is still the bases magic on base.
-
-### Day time
+As the game progresses, the player also gets certain powers that will help them in their defense.
+1. Build light walls - shadows will automatically bounce off them, but djinn paths cannot pass through
+2. Freeze mechanic ? - so that the player can freeze all the shadows, which will make specific
+captures easier
 
 ---
 
@@ -198,9 +207,9 @@ Make a basic prototype where both of the modes are somewhat fleshed out. I belie
 things comes from the interplay between the modes, so its important to make sure that we are able
 to spend some time prototyping ideas there.
 
-There is no - very little focus on the graphics and sounds and things. Maybe just enough to give an
-idea of what it is. SImilarly, no UI polish. Keep UX as simple as possible. We want to make a prototype
-of the gameplay in one state.
+There is no - very little focus on the graphics and sounds. Maybe just enough to give an
+idea of what it is. Similarly, no UI polish. Keep UX as simple as possible. We want to make a prototype
+of the gameplay, and interplay between day-night.
 
 
 ## Post Jam Goals

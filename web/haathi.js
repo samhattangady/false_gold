@@ -241,6 +241,7 @@ const webSave = (key, key_len, data, data_len) => {
 const webLoadLen = (key, key_len) => {
   const key_name = wasmStringLen(key, key_len);
   const data = window.localStorage.getItem(key_name);
+  if (data === null) return 0;
   return data.length;
 }
 
