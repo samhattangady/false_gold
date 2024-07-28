@@ -426,10 +426,12 @@ pub const Rect = struct {
         return self.position.add(self.size.scale(0.5));
     }
 
+    // TODO (28 Jul 2024 sam): Break this up into the intesection check for
+    // collision and prediction
     pub fn intersectsLine(self: *const Self, p0: Vec2, p1: Vec2) ?Vec2 {
         const p0_in = self.contains(p0);
         const p1_in = self.contains(p1);
-        if (!p0_in and !p1_in) return null;
+        // if (!p0_in and !p1_in) return null;
         if (p0_in and p1_in) return p0;
         const verts = [_]Vec2{
             self.position,
@@ -439,6 +441,7 @@ pub const Rect = struct {
         };
         for (verts, 0..) |v0, i| {
             const v1 = if (i == verts.len - 1) verts[0] else verts[i + 1];
+            // TODO (28 Jul 2024 sam): Return the closest point of contact
             if (lineSegmentsIntersect(p0, p1, v0, v1)) |point| return point;
         }
         // should be unreachable.
@@ -560,6 +563,15 @@ pub fn xRayIntersects(point: Vec2, v0: Vec2, v1: Vec2) bool {
     return x_intersect >= point.x;
 }
 
+pub fn polygonArea(verts: []const Vec2) f32 {
+    var acc: f32 = 0;
+    for (verts, 0..verts.len) |p0, i| {
+        const p1 = if (i == verts.len - 1) verts[0] else verts[i + 1];
+        acc += (p0.x * p1.y) - (p1.x * p0.y);
+    }
+    return @abs(acc / 2);
+}
+
 pub fn polygonContainsPoint(verts: []const Vec2, point: Vec2, bbox: ?Rect) bool {
     // TODO (27 Jul 2024 sam): If there is no bbox, then compute it first.
     if (bbox) |box| {
@@ -582,6 +594,13 @@ pub fn polygonContainsPoint(verts: []const Vec2, point: Vec2, bbox: ?Rect) bool 
 /// t varies from 0 to 1. (Can also be outside the range for extrapolation)
 pub fn lerpf(start: f32, end: f32, t: f32) f32 {
     return (start * (1.0 - t)) + (end * t);
+}
+
+// returns t from 0-1 start-end
+pub fn unlerpf(start: f32, end: f32, current: f32) f32 {
+    const total = end - start;
+    if (total == 0) return 0;
+    return (current - start) / total;
 }
 
 /// When we have an index that we want to toggle through while looping, then we use this.

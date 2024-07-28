@@ -27,6 +27,7 @@ const ShadowIndex = ConstKey("gold_shadow");
 const SpiritIndex = ConstKey("gold_spirit");
 
 const LOOP_LIFE_TICKS = 90;
+const LOOP_MIN_AREA = 700;
 const PLAYER_ACCELERATION = 2;
 const PLAYER_VELOCITY_MAX = 6;
 const PLAYER_VELOCITY_MAX_SQR = PLAYER_VELOCITY_MAX * PLAYER_VELOCITY_MAX;
@@ -42,9 +43,9 @@ const SPIRIT_LIGHT_RADIUS_SQR = SPIRIT_LIGHT_RADIUS * SPIRIT_LIGHT_RADIUS;
 const SPIRIT_LIGHT_SIZE = Vec2{ .x = SPIRIT_LIGHT_RADIUS * 2, .y = SPIRIT_LIGHT_RADIUS * 2 };
 const SPIRIT_SIZE = Vec2{ .x = 10, .y = 10 };
 const DJINN_SIZE = Vec2{ .x = 16, .y = 22 };
-const GRID_SIZE = Vec2i{ .x = 48, .y = 28 };
-const WORLD_SIZE = SCREEN_SIZE.subtract(.{ .x = 64, .y = 132 });
-const WORLD_OFFSET = Vec2{ .x = 32, .y = 100 };
+const GRID_SIZE = Vec2i{ .x = 50, .y = 24 };
+const WORLD_SIZE = SCREEN_SIZE.subtract(.{ .x = 54, .y = 132 });
+const WORLD_OFFSET = Vec2{ .x = 28, .y = 100 };
 const GRID_CELL_SIZE = Vec2{
     .x = WORLD_SIZE.x / @as(f32, @floatFromInt(GRID_SIZE.x)),
     .y = WORLD_SIZE.y / @as(f32, @floatFromInt(GRID_SIZE.y)),
@@ -69,7 +70,7 @@ const START_COST_OF_DJINN = 1;
 const START_GEMS = COST_OF_MINE;
 const TRAIL_SEGMENT_LEN = 15;
 const TRAIL_SEGMENT_LEN_SQR = TRAIL_SEGMENT_LEN * TRAIL_SEGMENT_LEN;
-const TRAIL_TOTAL_LEN = TRAIL_SEGMENT_LEN * 8;
+const TRAIL_TOTAL_LEN = TRAIL_SEGMENT_LEN * 30;
 const TRAIL_TOTAL_LEN_SQR = TRAIL_TOTAL_LEN * TRAIL_TOTAL_LEN;
 
 const DJINN_TICK_COUNT = 15;
@@ -134,11 +135,17 @@ const World = struct {
 
     pub fn worldPosToAddress(self: *const World, position: Vec2) Vec2i {
         const pos = position;
-        _ = self;
         const x = pos.x / GRID_CELL_SIZE.x;
         const y = pos.y / GRID_CELL_SIZE.y;
         const cell = Vec2{ .x = x, .y = y };
-        return cell.floorI();
+        return self.clampAddress(cell.floorI());
+    }
+
+    pub fn clampAddress(self: *const World, address: Vec2i) Vec2i {
+        var cell = address;
+        cell.x = std.math.clamp(cell.x, self.cell_origin.x, self.cell_origin.x + GRID_SIZE.x - 1);
+        cell.y = std.math.clamp(cell.y, self.cell_origin.y, self.cell_origin.y + GRID_SIZE.y - 1);
+        return cell;
     }
 
     // Returned rect is in world space.
@@ -188,7 +195,7 @@ const World = struct {
 
 const Trail = struct {
     points: std.ArrayList(Vec2),
-    length_sqr: f32 = 0,
+    length: f32 = 0,
     intersection: ?Vec2 = null,
     intersection_index: usize = 0,
 
@@ -202,7 +209,7 @@ const Trail = struct {
 
     pub fn reset(self: *Trail) void {
         self.points.clearRetainingCapacity();
-        self.length_sqr = 0;
+        self.length = 0;
         self.intersection = null;
     }
 
@@ -215,7 +222,7 @@ const Trail = struct {
         if (self.points.items.len == 0) return;
         const prev = self.points.getLast();
         const dist = prev.distanceSqr(position);
-        self.length_sqr += dist;
+        self.length += @sqrt(dist);
         self.points.append(position) catch unreachable;
     }
 
@@ -256,14 +263,14 @@ const Trail = struct {
                 return;
             }
             self.points.append(position) catch unreachable;
-            self.length_sqr += dist;
+            self.length += @sqrt(dist);
         }
-        if (self.length_sqr > TRAIL_TOTAL_LEN_SQR) {
+        if (self.length > TRAIL_TOTAL_LEN) {
             helpers.assert(self.points.items.len > 2);
             const old_first = self.points.orderedRemove(0);
             const new_first = self.points.items[0];
             const to_sub = old_first.distanceSqr(new_first);
-            self.length_sqr -= to_sub;
+            self.length -= @sqrt(to_sub);
         }
     }
 };
@@ -330,6 +337,16 @@ pub const StructureType = enum {
     altar,
     lamp,
     combiner,
+
+    pub fn startingHealth(self: *const StructureType) u16 {
+        return switch (self.*) {
+            .base => 500,
+            .mine => 50,
+            .altar => 10,
+            .lamp => 10,
+            .combiner => 50,
+        };
+    }
 };
 
 pub const Structure = struct {
@@ -343,6 +360,7 @@ pub const Structure = struct {
     slots: [4]?SlotType = [_]?SlotType{null} ** 4,
 
     fn setup(self: *Structure, world: World) void {
+        self.health = self.structure.startingHealth();
         switch (self.structure) {
             .base => {
                 self.slots[0] = .dropoff;
@@ -368,11 +386,6 @@ pub const Structure = struct {
                 self.slots[self.orientation.next().toIndex()] = .action;
             },
         }
-    }
-
-    pub fn damage(self: *Structure, amount: u16) void {
-        if (self.health > amount) self.health -= amount else self.health = 0;
-        return;
     }
 
     pub fn update(self: *Structure, game: *Game) void {
@@ -766,9 +779,9 @@ pub const ShadowType = enum {
 
     pub fn velocityMax(self: *const ShadowType) f32 {
         return switch (self.*) {
-            .normal => 1,
+            .normal => 1.5,
             .fast => 4,
-            .strong => 0.5,
+            .strong => 0.8,
         };
     }
 
@@ -782,6 +795,14 @@ pub const ShadowType = enum {
 
     pub fn radius(self: *const ShadowType) f32 {
         return self.size().y;
+    }
+
+    pub fn damage(self: *const ShadowType) u16 {
+        return switch (self.*) {
+            .normal => 10,
+            .fast => 2,
+            .strong => 30,
+        };
     }
 
     pub fn velocityScared(self: *const ShadowType) f32 {
@@ -819,28 +840,37 @@ pub const Shadow = struct {
         };
     }
 
-    pub fn update(self: *Shadow, game: *Game) void {
+    // returns if the direction  was changed
+    pub fn update(self: *Shadow, game: *Game) bool {
         if (self.death_count) |dc| {
             if (dc == 0) {
                 self.dead = true;
-                return;
+                return false;
             } else {
                 self.death_count = dc - 1;
             }
-            return;
+            return false;
         }
+        var dir_changed = false;
         const old_v = self.vel_mag;
         self.vel_mag = @max(self.shadow.velocityMax(), self.vel_mag * SHADOW_DECELERATE_RATE);
         if (old_v != self.vel_mag) self.velocity = self.velocity.normalize().scale(self.vel_mag);
         const new_position = self.position.add(self.velocity);
-        var is_player: bool = false;
-        if (game.collides(self.position, new_position, &is_player, self.radius)) |center| {
-            self.vel_mag = if (is_player) self.shadow.velocityScared() else self.shadow.velocityMax();
+        if (game.getWorldRepeller(self.position, new_position, self.radius)) |repeller| {
+            self.velocity = self.position.subtract(repeller).normalize().scale(self.vel_mag);
+            dir_changed = true;
+        } else if (game.collides(self.position, new_position, self.shadow)) |center| {
             self.velocity = self.position.subtract(center).normalize().scale(self.vel_mag);
+            dir_changed = true;
+        } else if (game.inPlayerRange(self.position, new_position, self.radius)) |center| {
+            self.vel_mag = self.shadow.velocityScared();
+            self.velocity = self.position.subtract(center).normalize().scale(self.vel_mag);
+            self.position = new_position;
+            dir_changed = true;
         } else {
             self.position = new_position;
         }
-        if (is_player) self.position = new_position;
+        return dir_changed;
     }
 
     pub fn markDead(self: *Shadow) void {
@@ -852,19 +882,23 @@ pub const Shadow = struct {
 
 pub const ShadowSystem = struct {
     shadows: ConstIndexArray(ShadowIndex, Shadow),
+    changed: std.ArrayList(ShadowIndex),
 
     pub fn init(allocator: std.mem.Allocator) ShadowSystem {
         return .{
             .shadows = ConstIndexArray(ShadowIndex, Shadow).init(allocator),
+            .changed = std.ArrayList(ShadowIndex).init(allocator),
         };
     }
 
     pub fn deinit(self: *ShadowSystem) void {
         self.shadows.deinit();
+        self.changed.deinit();
     }
 
     pub fn clear(self: *ShadowSystem) void {
         self.shadows.clearRetainingCapacity();
+        self.changed.clearRetainingCapacity();
     }
 
     pub fn reset(self: *ShadowSystem) void {
@@ -884,7 +918,12 @@ pub const ShadowSystem = struct {
     }
 
     pub fn update(self: *ShadowSystem, game: *Game) void {
-        for (self.shadows.items()) |*shadow| shadow.update(game);
+        self.changed.clearRetainingCapacity();
+        for (self.shadows.keys()) |skey| {
+            const shadow = self.shadows.getPtr(skey);
+            const vel_changed = shadow.update(game);
+            if (vel_changed) self.changed.append(skey) catch unreachable;
+        }
     }
 };
 
@@ -976,6 +1015,95 @@ const Loop = struct {
     }
 };
 
+const Alert = struct {
+    target: StructureIndex,
+    target_pos: Vec2,
+    shadow: ShadowIndex,
+    predicted_steps: f32,
+
+    fn earlier(_: void, alert1: Alert, alert2: Alert) bool {
+        return alert1.predicted_steps < alert2.predicted_steps;
+    }
+};
+
+const AlertSystem = struct {
+    alerts: std.ArrayList(Alert),
+    timer: u64 = 0,
+    last: u64 = 0,
+    per_second: f32 = 0,
+
+    pub fn init(allocator: std.mem.Allocator) AlertSystem {
+        return .{
+            .alerts = std.ArrayList(Alert).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *AlertSystem) void {
+        self.alerts.deinit();
+    }
+
+    pub fn clear(self: *AlertSystem) void {
+        self.alerts.clearRetainingCapacity();
+        self.timer = 0;
+        self.last = 0;
+    }
+
+    pub fn update(self: *AlertSystem, game: *Game) void {
+        // remove if it already exists (means dir changed, so its no longer hitting)
+        for (game.shadows.changed.items) |skey| {
+            for (self.alerts.items, 0..) |alert, i| {
+                if (alert.shadow.equal(skey)) {
+                    _ = self.alerts.swapRemove(i);
+                    break;
+                }
+            }
+        }
+        for (game.shadows.changed.items) |skey| {
+            const shadow = game.shadows.shadows.getPtr(skey);
+            const pos = shadow.position;
+            if (game.hitsStructure(pos, shadow.velocity, skey)) |alert| {
+                self.alerts.append(alert) catch unreachable;
+            }
+        }
+        // Remove alerts if it has already hit or dead
+        var to_remove = std.ArrayList(usize).init(game.haathi.arena);
+        for (self.alerts.items, 0..) |*alert, i| {
+            alert.predicted_steps -= 1;
+            const shadow = game.shadows.shadows.getPtr(alert.shadow);
+            if (shadow.dead) to_remove.insert(0, i) catch unreachable;
+        }
+        for (to_remove.items) |i| _ = self.alerts.swapRemove(i);
+        if (self.alerts.items.len == 0) {
+            self.per_second = 0;
+            return;
+        }
+        std.sort.pdq(Alert, self.alerts.items, {}, Alert.earlier);
+        const alert = self.alerts.items[0];
+        const MAX_ALERTS_PER_SECOND = 8;
+        const ALERT_TIMELINE_MAX = 4;
+        const ALERT_TIMELINE_MIN = 0.2;
+        if (alert.predicted_steps > ALERT_TIMELINE_MAX * 60) {
+            self.per_second = 0;
+            return;
+        }
+        const prog = helpers.unlerpf(ALERT_TIMELINE_MAX, ALERT_TIMELINE_MIN, alert.predicted_steps / 60);
+        self.per_second = helpers.lerpf(0, MAX_ALERTS_PER_SECOND, prog);
+        //helpers.debugPrint("prog = {d}, per_second={d}", .{ prog, self.per_second });
+    }
+
+    pub fn play(self: *AlertSystem, game: *Game) void {
+        self.timer += 1;
+        if (self.per_second == 0) return;
+        const num_ticks = self.timer - self.last;
+        const seconds_passed = @as(f32, @floatFromInt(num_ticks)) / 60;
+        const reqd_passed = 1 / self.per_second;
+        if (seconds_passed > reqd_passed) {
+            game.haathi.playSound("audio/danger.wav", true);
+            self.last = self.timer;
+        }
+    }
+};
+
 // gameStruct
 pub const Game = struct {
     haathi: *Haathi,
@@ -987,6 +1115,7 @@ pub const Game = struct {
     spirits: ConstIndexArray(SpiritIndex, Spirit),
     lamps: std.ArrayList(Lamp),
     loops: std.ArrayList(Loop),
+    alerts: AlertSystem,
     inventory: [RESOURCE_COUNT]u16 = [_]u16{0} ** RESOURCE_COUNT,
     djinns: DjinnSystem,
     shadows: ShadowSystem,
@@ -1010,9 +1139,12 @@ pub const Game = struct {
     arena_handle: std.heap.ArenaAllocator,
     arena: std.mem.Allocator,
 
-    pub const serialize_fields = [_][]const u8{ "ticks", "steps", "world", "resources", "structures", "paths", "spirits", "inventory", "djinns", "shadows", "player", "builder", "mode", "stone_index", "ff_mode", "ff_to_sunset", "menu", "contextual", "day_count", "gems", "djinn_summon_cost", "lamps", "trail" };
+    pub const serialize_fields = [_][]const u8{ "ticks", "steps", "world", "resources", "structures", "paths", "spirits", "inventory", "djinns", "shadows", "player", "builder", "mode", "stone_index", "ff_mode", "ff_to_sunset", "menu", "contextual", "day_count", "gems", "djinn_summon_cost", "lamps", "trail", "alerts" };
 
     pub fn init(haathi: *Haathi) Game {
+        haathi.loadSound("audio/damage.wav", false);
+        haathi.loadSound("audio/danger.wav", false);
+        haathi.loadSound("audio/capture.wav", false);
         const allocator = haathi.allocator;
         var arena_handle = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         const world = World.init(haathi.allocator);
@@ -1025,6 +1157,7 @@ pub const Game = struct {
             .paths = ConstIndexArray(PathIndex, Path).init(allocator),
             .spirits = ConstIndexArray(SpiritIndex, Spirit).init(allocator),
             .builder = Builder.init(allocator),
+            .alerts = AlertSystem.init(allocator),
             .djinns = DjinnSystem.init(allocator),
             .shadows = ShadowSystem.init(allocator),
             .trail = Trail.init(allocator),
@@ -1045,6 +1178,7 @@ pub const Game = struct {
         self.lamps.deinit();
         self.structures.deinit();
         self.resources.deinit();
+        self.alerts.deinit();
         self.trail.deinit();
         self.spirits.deinit();
         for (self.paths.items()) |*path| path.deinit();
@@ -1068,6 +1202,7 @@ pub const Game = struct {
         self.paths.clearRetainingCapacity();
         for (self.loops.items) |*loop| loop.deinit();
         self.loops.clearRetainingCapacity();
+        self.alerts.clear();
         self.lamps.clearRetainingCapacity();
         self.world.clear();
         self.menu.clearRetainingCapacity();
@@ -1108,8 +1243,8 @@ pub const Game = struct {
         }
     }
 
-    pub fn collides(self: *Game, prev_pos: Vec2, pos: Vec2, player_flag: *bool, radius: f32) ?Vec2 {
-        // out of bounds
+    pub fn getWorldRepeller(self: *Game, prev_pos: Vec2, pos: Vec2, radius: f32) ?Vec2 {
+        _ = radius;
         if (pos.y > self.world.maxY()) return .{
             .x = helpers.lerpf(prev_pos.x, pos.x, -1),
             .y = self.world.maxY(),
@@ -1126,19 +1261,36 @@ pub const Game = struct {
             .x = self.world.minX(),
             .y = helpers.lerpf(prev_pos.y, pos.y, -1),
         };
+        return null;
+    }
+
+    pub fn inPlayerRange(self: *Game, prev_pos: Vec2, pos: Vec2, radius: f32) ?Vec2 {
+        _ = prev_pos;
         if (pos.distanceSqr(self.player.position) < PLAYER_LIGHT_RADIUS_SQR + radius * radius) {
-            player_flag.* = true;
             return self.player.position;
         }
+        return null;
+    }
+
+    pub fn damageStructure(self: *Game, skey: StructureIndex, amount: u16) void {
+        const structure = self.structures.getPtr(skey);
+        if (structure.health > 0) {
+            structure.health -= @min(structure.health, amount);
+            self.haathi.playSound("audio/damage.wav", false);
+        }
+    }
+
+    pub fn collides(self: *Game, prev_pos: Vec2, pos: Vec2, shadow_type: ShadowType) ?Vec2 {
         // collide with structure
         const address = self.world.worldPosToAddress(pos);
-        for (self.structures.items()) |*structure| {
+        for (self.structures.keys()) |skey| {
+            const structure = self.structures.getPtr(skey);
             if (structure.address.equal(address)) {
-                structure.damage(1);
+                self.damageStructure(skey, shadow_type.damage());
                 return self.world.gridCenter(address);
             }
         }
-        if (self.trail.inRange(prev_pos, pos, radius)) |point| return point;
+        if (self.trail.inRange(prev_pos, pos, shadow_type.radius())) |point| return point;
         return null;
     }
 
@@ -1807,26 +1959,61 @@ pub const Game = struct {
         }
     }
 
+    pub fn hitsStructure(self: *Game, spos: Vec2, vel: Vec2, shadow_index: ShadowIndex) ?Alert {
+        var closest_dist_sqe: f32 = 10000000;
+        var closest: Vec2 = .{};
+        var strkey: ?StructureIndex = null;
+        const end = spos.add(vel.scale(10000));
+        for (self.structures.keys()) |skey| {
+            const str = self.structures.getPtr(skey);
+            const rect = self.world.cellToRect(str.address);
+            if (rect.intersectsLine(spos, end)) |point| {
+                const dist = point.distanceSqr(spos);
+                if (strkey == null or dist < closest_dist_sqe) {
+                    strkey = skey;
+                    closest = point;
+                    closest_dist_sqe = dist;
+                }
+            }
+        }
+        if (strkey) |skey| {
+            const predicted_steps = @sqrt(closest_dist_sqe) / vel.length();
+            return .{
+                .target = skey,
+                .target_pos = closest,
+                .shadow = shadow_index,
+                .predicted_steps = predicted_steps,
+            };
+        }
+        return null;
+    }
+
     fn createLoop(self: *Game, loop: []Vec2) void {
+        const area = helpers.polygonArea(loop);
+        if (area < LOOP_MIN_AREA) {
+            return;
+        }
         var destroyed = std.ArrayList(Destroyable).init(self.haathi.arena);
         for (self.shadows.shadows.items()) |*shadow| {
             if (shadow.death_count != null) continue;
             if (helpers.polygonContainsPoint(loop, shadow.position, null)) {
                 shadow.markDead();
                 destroyed.append(.{ .item = .shadow, .position = shadow.position }) catch unreachable;
+                self.haathi.playSound("audio/capture.wav", false);
             }
         }
-        for (self.structures.items()) |*str| {
+        for (self.structures.keys()) |skey| {
+            const str = self.structures.getPtr(skey);
             if (str.health == 0) continue;
             const str_pos = self.world.cellToRect(str.address).center();
             if (helpers.polygonContainsPoint(loop, str_pos, null)) {
-                str.damage(1);
+                self.damageStructure(skey, 1);
                 destroyed.append(.{ .item = .structure, .position = str_pos }) catch unreachable;
             }
         }
         if (destroyed.items.len == 0) {
             // damage base
-            self.structures.getPtr(.{ .index = 0 }).damage(3);
+            self.damageStructure(.{ .index = 0 }, 3);
         }
         self.loops.append(Loop.init(self.allocator, loop, destroyed.items)) catch unreachable;
     }
@@ -1840,6 +2027,7 @@ pub const Game = struct {
         self.ticks = ticks;
         const mouse_address = self.world.worldPosToAddress(self.world.screenToWorld(self.haathi.inputs.mouse.current_pos));
         var moving = false;
+        if (true) {}
         if (self.haathi.inputs.getKey(.w).is_down) {
             self.player.velocity.y += PLAYER_ACCELERATION;
             moving = true;
@@ -1929,6 +2117,8 @@ pub const Game = struct {
                 for (self.loops.items) |*loop| loop.update();
                 self.checkLoseScenario();
                 self.checkWinScenario();
+                self.alerts.update(self);
+                self.alerts.play(self);
                 if (BUILDER_MODE) {
                     if (self.haathi.inputs.getKey(.m).is_clicked) self.startSunrise();
                 }
@@ -2210,59 +2400,74 @@ pub const Game = struct {
     }
 
     fn drawStructure(self: *Game, str: Structure) void {
-        const alpha: f32 = if (str.structure == .altar) 0.4 else 1;
-        self.drawCellInset(str.address, 6, colors.solarized_blue.alpha(0.8 * alpha));
+        var alpha: f32 = 1;
+        if (str.structure == .altar) alpha *= 0.4;
+        if (str.health == 0) alpha *= 0.4;
+        self.drawCellInset(str.address, 1, colors.solarized_blue.alpha(0.8 * alpha));
         self.haathi.drawText(.{
             .text = @tagName(str.structure),
             .position = (self.world.gridCenterScreen(str.address)),
             .color = colors.solarized_base03.alpha(alpha),
             .style = FONTS[1],
         });
-        self.haathi.drawText(.{
-            .text = NUMBER_STR[str.health],
-            .position = (self.world.gridCenterScreen(str.address).add(.{ .y = 10 })),
-            .color = colors.solarized_base03.alpha(alpha),
-            .style = FONTS[1],
-        });
-        if (str.health == 0) self.drawCross(str.address);
-        for (str.slots, 0..) |slot, i| {
-            if (slot) |stype| {
-                const address = str.address.add(Orientation.fromIndex(i).toDir());
-                const dir = Orientation.fromIndex(i).opposite().vec();
-                const perp = Orientation.fromIndex(i).opposite().next().vec();
-                // self.haathi.drawText(.{
-                //     .text = @tagName(stype),
-                //     .position = self.world.gridCenter(address).add(GRID_CELL_SIZE.yVec().scale(-0.5)),
-                //     .color = colors.solarized_base03,
-                //     .style = FONTS[1],
-                // });
-                switch (stype) {
-                    .pickup => {
-                        self.drawCellInset(address, 5, colors.solarized_green.alpha(0.4));
-                    },
-                    .dropoff => {
-                        const color = colors.solarized_cyan.alpha(0.4);
-                        const center = (self.world.gridCenterScreen(address));
-                        const edge = center.add(dir.scale(GRID_CELL_SIZE.x * 0.5));
-                        self.haathi.drawLine(.{
-                            .p0 = center,
-                            .p1 = edge,
-                            .width = GRID_CELL_SIZE.x * 0.3,
-                            .color = color,
-                        });
-                        const p0 = edge.add(perp.scale(GRID_CELL_SIZE.x * 0.35));
-                        const p1 = edge.add(perp.scale(-GRID_CELL_SIZE.x * 0.35));
-                        const p2 = edge.add(dir.scale(GRID_CELL_SIZE.x * 0.15));
-                        const tri = self.haathi.arena.alloc(Vec2, 3) catch unreachable;
-                        tri[0] = p0;
-                        tri[1] = p1;
-                        tri[2] = p2;
-                        self.haathi.drawPoly(.{ .points = tri[0..], .color = color });
-                        self.drawCellInset(address, 8, color);
-                    },
-                    .action => {
-                        self.drawCellInset(address, 5, colors.solarized_orange.alpha(0.4));
-                    },
+        if (self.mode == .night or self.handleMenu()) {
+            //health
+            const start = self.world.gridCenterScreen(str.address).add(.{ .x = GRID_CELL_SIZE.x * -0.5, .y = GRID_CELL_SIZE.y * -0.5 + 3 });
+            const end = start.add(.{ .x = GRID_CELL_SIZE.x });
+            const health = @as(f32, @floatFromInt(str.health)) / @as(f32, @floatFromInt(str.structure.startingHealth()));
+            self.haathi.drawLine(.{
+                .p0 = start.add(.{ .x = -1, .y = -1 }),
+                .p1 = end.add(.{ .x = 1, .y = -1 }),
+                .color = colors.solarized_base3,
+                .width = 6,
+            });
+            self.haathi.drawLine(.{
+                .p0 = start,
+                .p1 = start.lerp(end, health),
+                .color = colors.solarized_base03,
+                .width = 4,
+            });
+        }
+        if (self.mode != .night) {
+            for (str.slots, 0..) |slot, i| {
+                if (slot) |stype| {
+                    const address = str.address.add(Orientation.fromIndex(i).toDir());
+                    const dir = Orientation.fromIndex(i).opposite().vec();
+                    const perp = Orientation.fromIndex(i).opposite().next().vec();
+                    // self.haathi.drawText(.{
+                    //     .text = @tagName(stype),
+                    //     .position = self.world.gridCenter(address).add(GRID_CELL_SIZE.yVec().scale(-0.5)),
+                    //     .color = colors.solarized_base03,
+                    //     .style = FONTS[1],
+                    // });
+                    switch (stype) {
+                        .pickup => {
+                            self.drawCellInset(address, 5, colors.solarized_green.alpha(0.4));
+                        },
+                        .dropoff => {
+                            const color = colors.solarized_cyan.alpha(0.4);
+                            const center = (self.world.gridCenterScreen(address));
+                            const edge = center.add(dir.scale(GRID_CELL_SIZE.x * 0.5));
+                            self.haathi.drawLine(.{
+                                .p0 = center,
+                                .p1 = edge,
+                                .width = GRID_CELL_SIZE.x * 0.3,
+                                .color = color,
+                            });
+                            const p0 = edge.add(perp.scale(GRID_CELL_SIZE.x * 0.35));
+                            const p1 = edge.add(perp.scale(-GRID_CELL_SIZE.x * 0.35));
+                            const p2 = edge.add(dir.scale(GRID_CELL_SIZE.x * 0.15));
+                            const tri = self.haathi.arena.alloc(Vec2, 3) catch unreachable;
+                            tri[0] = p0;
+                            tri[1] = p1;
+                            tri[2] = p2;
+                            self.haathi.drawPoly(.{ .points = tri[0..], .color = color });
+                            self.drawCellInset(address, 8, color);
+                        },
+                        .action => {
+                            self.drawCellInset(address, 5, colors.solarized_orange.alpha(0.4));
+                        },
+                    }
                 }
             }
         }
@@ -2345,10 +2550,6 @@ pub const Game = struct {
         // draw ore
         for (self.world.ore_patches.items) |patch| {
             self.drawCellInset(patch.position, 3, colors.solarized_base1.alpha(0.5));
-        }
-        // draw structures
-        for (self.structures.items()) |str| {
-            self.drawStructure(str);
         }
         const frame: f32 = @floatFromInt((self.steps / 6) % 4);
         const djinn_sprite_walking = haathi_lib.Sprite{ .path = "/img/djinn_walking.png", .anchor = .{ .x = 15 * frame }, .size = .{ .x = 15, .y = 28 } };
@@ -2452,15 +2653,15 @@ pub const Game = struct {
                 .size = SCREEN_SIZE,
                 .color = colors.solarized_base03.alpha(0.3),
             });
-            for (self.spirits.items()) |spirit| {
-                self.haathi.drawRect(.{
-                    .position = self.world.worldToScreen(spirit.position),
-                    .centered = true,
-                    .radius = SPIRIT_LIGHT_RADIUS,
-                    .size = SPIRIT_LIGHT_SIZE,
-                    .color = colors.solarized_blue.alpha(0.6),
-                });
-            }
+            // for (self.spirits.items()) |spirit| {
+            //     self.haathi.drawRect(.{
+            //         .position = self.world.worldToScreen(spirit.position),
+            //         .centered = true,
+            //         .radius = SPIRIT_LIGHT_RADIUS,
+            //         .size = SPIRIT_LIGHT_SIZE,
+            //         .color = colors.solarized_blue.alpha(0.6),
+            //     });
+            // }
             // draw player light
             for (self.lamps.items) |lamp| {
                 const beam_multiplier = @as(f32, @floatFromInt(lamp.target_countdown)) / LAMP_RESET_TICKS;
@@ -2482,7 +2683,8 @@ pub const Game = struct {
                     });
                 }
             }
-            for (self.shadows.shadows.items()) |shadow| {
+            for (self.shadows.shadows.keys()) |skey| {
+                const shadow = self.shadows.shadows.getPtr(skey);
                 if (shadow.dead) continue;
                 const scale: f32 = if (shadow.death_count != null) @as(f32, @floatFromInt(shadow.death_count.?)) / LOOP_KILL_TICKS else 1;
                 const color = shadow.shadow.color();
@@ -2492,6 +2694,14 @@ pub const Game = struct {
                     .color = color.alpha(scale),
                     .centered = true,
                 });
+                if (skey.index < NUMBER_STR.len) {
+                    self.haathi.drawText(.{
+                        .text = NUMBER_STR[skey.index],
+                        .position = self.world.worldToScreen(shadow.position),
+                        .color = colors.white,
+                        .style = FONTS[1],
+                    });
+                }
             }
             for (self.spirits.items()) |spirit| {
                 self.haathi.drawRect(.{
@@ -2597,6 +2807,10 @@ pub const Game = struct {
                     }
                 }
             }
+        }
+        // draw structures
+        for (self.structures.items()) |str| {
+            self.drawStructure(str);
         }
         // draw player
         self.haathi.drawRect(.{
@@ -2717,6 +2931,14 @@ pub const Game = struct {
                 const text = std.fmt.allocPrintZ(self.haathi.arena, "Ore: {d}", .{self.inventory[0]}) catch unreachable;
                 self.haathi.drawText(.{ .text = text, .position = .{ .x = x_start, .y = 50 }, .color = colors.solarized_base03, .alignment = .left });
             }
+        }
+        for (self.alerts.alerts.items) |alert| {
+            const spos = self.shadows.shadows.getPtr(alert.shadow).position;
+            self.haathi.drawLine(.{
+                .p0 = self.world.worldToScreen(spos),
+                .p1 = self.world.worldToScreen(alert.target_pos),
+                .color = colors.solarized_red,
+            });
         }
         if (false) {
             const rect = self.world.cellToRect(self.player.address);

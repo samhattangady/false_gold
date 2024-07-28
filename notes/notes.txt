@@ -451,13 +451,39 @@ SHIT. I accidentally lost a bit of progress in the notes file. I had a nice
 list of tasks written last night, but they're gone now. Annoying. No worries.
 Lets make the list again.
 
+[X] Change the world size to have space for menus and things outside bounds.
+[X] Fix some shadow collision issues
 [ ] Summoning - when you loop around sets of shadows+structures, effects are
 enacted. So its an additional challenge thing that you can do.
-[X] Change the world size to have space for menus and things outside bounds.
 [ ] Healths of structures should make more sense. Show them, and make
 different shadows do different amounts of damage
 [ ] If base is destroyed, lose game
 [ ] Add a time limit for nights - so that you can't just wait around
+[ ] Economy - figure out prices for things.
+[ ] Add a splitter that distributes from one spot to many.
 
 okay. lets do the screen thing. I think that should work. It would make a lot
-of things easier later.
+of things easier later. 
+So what can we do next? I think summoning is the least important, because we
+can have a game even without that.
+
+Okay lets do healths. Then we see.
+
+Okay, I think theres an issue with the health / lose condition right now as it
+stands. Specifically, its kinda hard to know when a building is taking damage
+because your attention is definitely elsewhere on the screen. Im thinking
+about how that could be dealt with. Maybe installing lights? But that could
+make things trivial maybe? I think its okay. What we should do is add a sound
+and animation effect.
+
+Okay, lets see what we need for the alert system. We need to check each
+shadow, if it is not scared by player, and see if it will hit any non-dead
+structure, and in how much time, we then can store a list of this sorted by
+time, and then as one reaches closer, it should play the thing louder.
+
+The next question is how to space out the beeps, some state will be needed for
+taht. Then there should be a timer, and then run mods on that to get the
+timing. Should be okay. I don't want to run the distance checks every frame,
+rather just when the players direction has changed.
+
+Honestly super cool now that we have the sounds and alerts.
