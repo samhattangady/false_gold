@@ -438,4 +438,26 @@ about that later.
 
  So what to do now. First update the shadows to the new behaviour.
 For today:
-- if you complete a loop, kill the shadows inside
+[x] if you complete a loop, kill the shadows inside 
+[x] player collisions with structure
+[ ] if a structure is in a loop, it gets damaged
+[ ] repair structures
+[ ] if nothin
+
+---
+
+28 Jul 2024
+SHIT. I accidentally lost a bit of progress in the notes file. I had a nice
+list of tasks written last night, but they're gone now. Annoying. No worries.
+Lets make the list again.
+
+[ ] Summoning - when you loop around sets of shadows+structures, effects are
+enacted. So its an additional challenge thing that you can do.
+[X] Change the world size to have space for menus and things outside bounds.
+[ ] Healths of structures should make more sense. Show them, and make
+different shadows do different amounts of damage
+[ ] If base is destroyed, lose game
+[ ] Add a time limit for nights - so that you can't just wait around
+
+okay. lets do the screen thing. I think that should work. It would make a lot
+of things easier later.

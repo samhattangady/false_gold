@@ -425,6 +425,25 @@ pub const Rect = struct {
     pub fn center(self: *const Self) Vec2 {
         return self.position.add(self.size.scale(0.5));
     }
+
+    pub fn intersectsLine(self: *const Self, p0: Vec2, p1: Vec2) ?Vec2 {
+        const p0_in = self.contains(p0);
+        const p1_in = self.contains(p1);
+        if (!p0_in and !p1_in) return null;
+        if (p0_in and p1_in) return p0;
+        const verts = [_]Vec2{
+            self.position,
+            self.position.add(self.size.xVec()),
+            self.position.add(self.size),
+            self.position.add(self.size.yVec()),
+        };
+        for (verts, 0..) |v0, i| {
+            const v1 = if (i == verts.len - 1) verts[0] else verts[i + 1];
+            if (lineSegmentsIntersect(p0, p1, v0, v1)) |point| return point;
+        }
+        // should be unreachable.
+        return null;
+    }
 };
 
 pub const Button = struct {
@@ -542,6 +561,7 @@ pub fn xRayIntersects(point: Vec2, v0: Vec2, v1: Vec2) bool {
 }
 
 pub fn polygonContainsPoint(verts: []const Vec2, point: Vec2, bbox: ?Rect) bool {
+    // TODO (27 Jul 2024 sam): If there is no bbox, then compute it first.
     if (bbox) |box| {
         if (!box.contains(point)) return false;
     }

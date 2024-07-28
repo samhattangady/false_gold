@@ -42,25 +42,19 @@ const SPIRIT_LIGHT_RADIUS_SQR = SPIRIT_LIGHT_RADIUS * SPIRIT_LIGHT_RADIUS;
 const SPIRIT_LIGHT_SIZE = Vec2{ .x = SPIRIT_LIGHT_RADIUS * 2, .y = SPIRIT_LIGHT_RADIUS * 2 };
 const SPIRIT_SIZE = Vec2{ .x = 10, .y = 10 };
 const DJINN_SIZE = Vec2{ .x = 16, .y = 22 };
-const SHADOW_SIZE = Vec2{ .x = 16, .y = 22 };
 const GRID_SIZE = Vec2i{ .x = 48, .y = 28 };
+const WORLD_SIZE = SCREEN_SIZE.subtract(.{ .x = 64, .y = 132 });
+const WORLD_OFFSET = Vec2{ .x = 32, .y = 100 };
 const GRID_CELL_SIZE = Vec2{
-    .x = SCREEN_SIZE.x / @as(f32, @floatFromInt(GRID_SIZE.x)),
-    .y = SCREEN_SIZE.y / @as(f32, @floatFromInt(GRID_SIZE.y)),
+    .x = WORLD_SIZE.x / @as(f32, @floatFromInt(GRID_SIZE.x)),
+    .y = WORLD_SIZE.y / @as(f32, @floatFromInt(GRID_SIZE.y)),
 };
+const OFF_SCREEN_POS = .{ .x = 2000, .y = 2000 };
 const GRID_OFFSET = GRID_SIZE.divide(2);
-const SHADOW_VELOCITY_MAX = 1.0;
-const SHADOW_VELOCITY_SCARED = 2;
 const SHADOW_SCARED_TICKS = 120;
 const SHADOW_DECELERATE_RATE = 0.95;
 const LAMP_RESET_TICKS = 30;
-const SHADOW_PICKUP_RADIUS = 15;
-const SHADOW_PICKUP_RADIUS_SQR = SHADOW_PICKUP_RADIUS * SHADOW_PICKUP_RADIUS;
-const TRAP_SIZE = Vec2{ .x = 30, .y = 30 };
-const TRAP_TICKS = 60;
-const TRAP_RADIUS = 25;
-const TRAP_RADIUS_SQR = TRAP_RADIUS * TRAP_RADIUS;
-const TRAP_INDICATOR_SIZE = TRAP_SIZE.x * 1.6;
+const LOOP_KILL_TICKS = 60;
 const ENERGY_DEFAULT_VALUE = 10;
 const FF_STEPS = 300;
 const EXTRA_FF_STEPS = 1000;
@@ -81,8 +75,8 @@ const TRAIL_TOTAL_LEN_SQR = TRAIL_TOTAL_LEN * TRAIL_TOTAL_LEN;
 const DJINN_TICK_COUNT = 15;
 const build_options = @import("build_options");
 const BUILDER_MODE = build_options.builder_mode;
-const ORE_START_OFFSET = Vec2{ .x = 38, .y = 44 };
-const ORE_ANIMATION_OFFSETS = [8]f32{ 0, 2, 11, 9, 0, 2, 11, 9 };
+const ORE_START_OFFSET = Vec2{ .x = 1, .y = 22 };
+const ORE_ANIMATION_OFFSETS = [4]f32{ 0, -1, 2, 4 };
 
 const ORE_SPRITES = [_]haathi_lib.Sprite{
     .{ .path = "/img/ore0.png", .anchor = .{}, .size = .{ .x = 18, .y = 20 } },
@@ -97,9 +91,13 @@ const OrePatch = struct {
     position: Vec2i,
 };
 
+// World has origin at the center, x-right, y-up.
+// Screen has origin at bottomleft, x-right, y-up
 const World = struct {
-    size: Vec2 = SCREEN_SIZE,
-    center: Vec2 = SCREEN_SIZE.scale(0.5),
+    size: Vec2 = WORLD_SIZE,
+    offset: Vec2 = WORLD_OFFSET,
+    center: Vec2 = WORLD_OFFSET.add(WORLD_SIZE.scale(0.5)),
+    cell_origin: Vec2i = .{ .x = GRID_SIZE.x / -2, .y = GRID_SIZE.y / -2 },
     ore_patches: std.ArrayList(OrePatch),
 
     pub fn init(allocator: std.mem.Allocator) World {
@@ -123,21 +121,18 @@ const World = struct {
 
     pub fn clear(self: *World) void {
         self.ore_patches.clearRetainingCapacity();
-        self.center = SCREEN_SIZE.scale(0.5);
+        self.center = WORLD_OFFSET.add(WORLD_SIZE.scale(0.5));
     }
 
-    pub fn toScreenPos(self: *const World, position: Vec2) Vec2 {
-        var pos = self.center;
-        pos.x += position.x;
-        pos.y += position.y;
-        return pos;
+    pub fn worldToScreen(self: *const World, position: Vec2) Vec2 {
+        return position.add(self.center);
     }
 
-    pub fn fromScreenPos(self: *const World, position: Vec2) Vec2 {
+    pub fn screenToWorld(self: *const World, position: Vec2) Vec2 {
         return position.subtract(self.center);
     }
 
-    pub fn toGridCell(self: *const World, position: Vec2) Vec2i {
+    pub fn worldPosToAddress(self: *const World, position: Vec2) Vec2i {
         const pos = position;
         _ = self;
         const x = pos.x / GRID_CELL_SIZE.x;
@@ -146,28 +141,42 @@ const World = struct {
         return cell.floorI();
     }
 
-    pub fn gridCenter(self: *const World, cell: Vec2i) Vec2 {
+    // Returned rect is in world space.
+    pub fn cellToRect(self: *const World, cell: Vec2i) Rect {
+        //const pos = cell.add(GRID_OFFSET);
         _ = self;
-        const pos = cell.add(GRID_OFFSET);
-        const xpos = (@as(f32, @floatFromInt(pos.x)) * GRID_CELL_SIZE.x) + (GRID_CELL_SIZE.x * 0.5);
-        const ypos = (@as(f32, @floatFromInt(pos.y)) * GRID_CELL_SIZE.y) + (GRID_CELL_SIZE.y * 0.5);
-        return .{ .x = xpos, .y = ypos };
+        const pos = cell;
+        const xpos = (@as(f32, @floatFromInt(pos.x)) * GRID_CELL_SIZE.x);
+        const ypos = (@as(f32, @floatFromInt(pos.y)) * GRID_CELL_SIZE.y);
+        return .{ .position = .{ .x = xpos, .y = ypos }, .size = GRID_CELL_SIZE };
+    }
+
+    pub fn gridCenter(self: *const World, cell: Vec2i) Vec2 {
+        return self.cellToRect(cell).center();
+    }
+
+    pub fn gridCenterScreen(self: *const World, cell: Vec2i) Vec2 {
+        return self.worldToScreen(self.cellToRect(cell).center());
     }
 
     pub fn maxX(self: *const World) f32 {
-        return self.size.x - self.center.x;
+        _ = self;
+        return GRID_CELL_SIZE.x * @as(f32, @floatFromInt(GRID_SIZE.x / 2));
     }
     pub fn maxY(self: *const World) f32 {
-        return self.size.y - self.center.y;
+        _ = self;
+        return GRID_CELL_SIZE.y * @as(f32, @floatFromInt(GRID_SIZE.y / 2));
     }
     pub fn minX(self: *const World) f32 {
-        return self.center.x - self.size.x;
+        _ = self;
+        return GRID_CELL_SIZE.x * @as(f32, @floatFromInt(-GRID_SIZE.x / 2));
     }
     pub fn minY(self: *const World) f32 {
-        return self.center.y - self.size.y;
+        _ = self;
+        return GRID_CELL_SIZE.y * @as(f32, @floatFromInt(-GRID_SIZE.y / 2));
     }
 
-    pub fn clampInBounds(self: *const World, position: Vec2) Vec2 {
+    pub fn clampInWorldBounds(self: *const World, position: Vec2) Vec2 {
         var clamped = position;
         clamped.x = @min(clamped.x, self.maxX());
         clamped.y = @min(clamped.y, self.maxY());
@@ -278,11 +287,13 @@ const Player = struct {
         self.velocity = self.velocity.scale(scale);
     }
 
-    pub fn updatePosition(self: *Player, world: World) void {
+    pub fn updatePosition(self: *Player, game: *const Game) void {
+        const old_pos = self.position;
         self.position = self.position.add(self.velocity);
-        self.position = world.clampInBounds(self.position);
+        self.position = game.world.clampInWorldBounds(self.position);
         self.position = self.position.round();
-        self.address = world.toGridCell(self.position);
+        self.position = game.structureCollision(old_pos, self.position) orelse self.position;
+        self.address = game.world.worldPosToAddress(self.position);
     }
 
     pub fn dampVelocity(self: *Player) void {
@@ -308,10 +319,15 @@ const SlotType = enum {
     }
 };
 
+const Destroyable = struct {
+    item: enum { structure, shadow },
+    position: Vec2,
+};
+
 pub const StructureType = enum {
     base,
     mine,
-    trap,
+    altar,
     lamp,
     combiner,
 };
@@ -338,8 +354,8 @@ pub const Structure = struct {
                 self.slots[self.orientation.toIndex()] = .pickup;
                 self.slots[self.orientation.opposite().toIndex()] = .action;
             },
-            .trap => {
-                self.position = world.fromScreenPos(world.gridCenter(self.address));
+            .altar => {
+                self.position = world.gridCenter(self.address);
             },
             .combiner => {
                 self.slots[self.orientation.toIndex()] = .pickup;
@@ -354,18 +370,13 @@ pub const Structure = struct {
         }
     }
 
-    pub fn damage(self: *Structure) void {
-        if (self.health > 0) self.health -= 1;
+    pub fn damage(self: *Structure, amount: u16) void {
+        if (self.health > amount) self.health -= amount else self.health = 0;
         return;
     }
 
-    pub fn trapShadow(self: *Structure, shadow: ShadowIndex) void {
-        self.shadow = shadow;
-        self.count = TRAP_TICKS;
-    }
-
     pub fn update(self: *Structure, game: *Game) void {
-        if (self.structure == .trap) {
+        if (self.structure == .altar) {
             if (self.count > 0) self.count -= 1;
             if (self.count == 0 and self.shadow != null) {
                 game.shadows.shadows.getPtr(self.shadow.?).dead = true;
@@ -433,7 +444,7 @@ const Lamp = struct {
     target_countdown: usize = 0,
 
     pub fn create(address: Vec2i, world: World) Lamp {
-        return .{ .address = address, .position = world.fromScreenPos(world.gridCenter(address)) };
+        return .{ .address = address, .position = world.screenToWorld(world.gridCenter(address)) };
     }
 
     pub fn update(self: *Lamp) void {
@@ -600,7 +611,7 @@ pub const Djinn = struct {
 
     pub fn update(self: *Djinn, game: *Game, ds: *DjinnSystem) void {
         if (self.path == null) {
-            self.position = SCREEN_SIZE.scale(2);
+            self.position = OFF_SCREEN_POS;
             return;
         }
         var should_move = true;
@@ -630,7 +641,7 @@ pub const Djinn = struct {
 
     pub fn lerpPosition(self: *Djinn, t: f32) void {
         if (self.path == null) {
-            self.position = SCREEN_SIZE.scale(2);
+            self.position = OFF_SCREEN_POS;
             return;
         }
         self.position = self.anim_start_pos.lerp(self.anim_end_pos, t);
@@ -664,7 +675,7 @@ pub const DjinnSystem = struct {
     }
 
     pub fn addDjinn(self: *DjinnSystem) void {
-        self.djinns.append(.{ .position = SCREEN_SIZE.scale(2) }) catch unreachable;
+        self.djinns.append(.{ .position = OFF_SCREEN_POS }) catch unreachable;
     }
 
     pub fn pathCount(self: *DjinnSystem, pkey: PathIndex) usize {
@@ -706,7 +717,7 @@ pub const DjinnSystem = struct {
         for (self.djinns.items()) |*djinn| {
             if (djinn.path != null and djinn.path.?.equal(pkey)) {
                 djinn.path = null;
-                djinn.position = SCREEN_SIZE.scale(2);
+                djinn.position = OFF_SCREEN_POS;
                 return;
             }
         }
@@ -730,7 +741,7 @@ pub const DjinnSystem = struct {
         for (self.djinns.items()) |*djinn| {
             if (djinn.path != null and djinn.path.?.equal(pkey)) {
                 djinn.path = null;
-                djinn.position = SCREEN_SIZE.scale(2);
+                djinn.position = OFF_SCREEN_POS;
             }
         }
     }
@@ -748,18 +759,63 @@ pub const DjinnSystem = struct {
     }
 };
 
+pub const ShadowType = enum {
+    normal,
+    fast,
+    strong,
+
+    pub fn velocityMax(self: *const ShadowType) f32 {
+        return switch (self.*) {
+            .normal => 1,
+            .fast => 4,
+            .strong => 0.5,
+        };
+    }
+
+    pub fn size(self: *const ShadowType) Vec2 {
+        return switch (self.*) {
+            .normal => .{ .x = 16, .y = 22 },
+            .fast => .{ .x = 10, .y = 18 },
+            .strong => .{ .x = 22, .y = 30 },
+        };
+    }
+
+    pub fn radius(self: *const ShadowType) f32 {
+        return self.size().y;
+    }
+
+    pub fn velocityScared(self: *const ShadowType) f32 {
+        return self.velocityMax() * 2;
+    }
+
+    pub fn color(self: *const ShadowType) Vec4 {
+        return switch (self.*) {
+            .normal => colors.solarized_cyan,
+            .fast => colors.solarized_cyan.lerp(colors.solarized_blue, 0.4),
+            .strong => colors.solarized_cyan.lerp(colors.solarized_green, 0.4),
+        };
+    }
+};
+
 pub const Shadow = struct {
+    shadow: ShadowType = .normal,
     position: Vec2,
     velocity: Vec2 = .{},
-    vel_mag: f32 = SHADOW_VELOCITY_MAX,
+    vel_mag: f32,
+    radius: f32,
     dead: bool = false,
     death_count: ?u16 = null,
 
-    pub fn init(position: Vec2, rng: std.rand.Random) Shadow {
-        const vel = (Vec2{ .x = (rng.float(f32) * 2) - 1, .y = (rng.float(f32) * 2) - 1 }).normalize().scale(SHADOW_VELOCITY_MAX);
+    pub fn init(position: Vec2, rng: std.rand.Random, stype: ?ShadowType) Shadow {
+        const shadow = stype orelse rng.enumValue(ShadowType);
+        const vel_mag = shadow.velocityMax();
+        const vel = (Vec2{ .x = (rng.float(f32) * 2) - 1, .y = (rng.float(f32) * 2) - 1 }).normalize().scale(vel_mag);
         return .{
+            .shadow = shadow,
             .position = position,
             .velocity = vel,
+            .vel_mag = vel_mag,
+            .radius = shadow.radius(),
         };
     }
 
@@ -771,15 +827,15 @@ pub const Shadow = struct {
             } else {
                 self.death_count = dc - 1;
             }
+            return;
         }
-        if (self.dead) return;
         const old_v = self.vel_mag;
-        self.vel_mag = @max(SHADOW_VELOCITY_MAX, self.vel_mag * SHADOW_DECELERATE_RATE);
+        self.vel_mag = @max(self.shadow.velocityMax(), self.vel_mag * SHADOW_DECELERATE_RATE);
         if (old_v != self.vel_mag) self.velocity = self.velocity.normalize().scale(self.vel_mag);
         const new_position = self.position.add(self.velocity);
         var is_player: bool = false;
-        if (game.collides(self.position, new_position, &is_player)) |center| {
-            self.vel_mag = if (is_player) SHADOW_VELOCITY_SCARED else SHADOW_VELOCITY_MAX;
+        if (game.collides(self.position, new_position, &is_player, self.radius)) |center| {
+            self.vel_mag = if (is_player) self.shadow.velocityScared() else self.shadow.velocityMax();
             self.velocity = self.position.subtract(center).normalize().scale(self.vel_mag);
         } else {
             self.position = new_position;
@@ -790,7 +846,7 @@ pub const Shadow = struct {
     pub fn markDead(self: *Shadow) void {
         self.vel_mag = 0;
         self.velocity = .{};
-        self.death_count = TRAP_TICKS;
+        self.death_count = LOOP_KILL_TICKS;
     }
 };
 
@@ -816,7 +872,7 @@ pub const ShadowSystem = struct {
     }
 
     pub fn addShadow(self: *ShadowSystem, position: Vec2, rng: std.Random) void {
-        const shadow = Shadow.init(position, rng);
+        const shadow = Shadow.init(position, rng, null);
         self.shadows.append(shadow) catch unreachable;
     }
 
@@ -863,7 +919,7 @@ pub const Spirit = struct {
 const MenuAction = enum {
     none,
     set_mode_build_mine,
-    set_mode_build_trap,
+    set_mode_build_altar,
     set_mode_build_lamp,
     set_mode_build_combiner,
     set_mode_loop_create,
@@ -897,11 +953,18 @@ const MenuItem = union(enum) {
 const Loop = struct {
     points: std.ArrayList(Vec2),
     life: u16 = LOOP_LIFE_TICKS,
+    center: Vec2,
+    destroyed: std.ArrayList(Destroyable),
 
-    pub fn init(allocator: std.mem.Allocator, points_in: []Vec2) Loop {
+    pub fn init(allocator: std.mem.Allocator, points_in: []Vec2, destroyed: []Destroyable) Loop {
         var points = std.ArrayList(Vec2).initCapacity(allocator, points_in.len) catch unreachable;
         points.appendSlice(points_in) catch unreachable;
-        return .{ .points = points };
+        var center = Vec2{};
+        for (points_in) |pt| center = center.add(pt);
+        center = center.scale(1 / @as(f32, @floatFromInt(points_in.len)));
+        var dest = std.ArrayList(Destroyable).initCapacity(allocator, destroyed.len) catch unreachable;
+        dest.appendSlice(destroyed) catch unreachable;
+        return .{ .points = points, .destroyed = dest, .center = center };
     }
 
     pub fn deinit(self: *Loop) void {
@@ -939,7 +1002,6 @@ pub const Game = struct {
     menu: std.ArrayList(MenuItem),
     contextual: std.ArrayList(MenuItem),
     day_count: u16 = 0,
-    night_ticks: u16 = 0,
     gems: usize = 0,
     steps: usize = 0,
     djinn_summon_cost: u32 = START_COST_OF_DJINN,
@@ -948,7 +1010,7 @@ pub const Game = struct {
     arena_handle: std.heap.ArenaAllocator,
     arena: std.mem.Allocator,
 
-    pub const serialize_fields = [_][]const u8{ "ticks", "steps", "world", "resources", "structures", "paths", "spirits", "inventory", "djinns", "shadows", "player", "builder", "mode", "stone_index", "ff_mode", "ff_to_sunset", "menu", "contextual", "day_count", "night_ticks", "gems", "djinn_summon_cost", "lamps", "trail" };
+    pub const serialize_fields = [_][]const u8{ "ticks", "steps", "world", "resources", "structures", "paths", "spirits", "inventory", "djinns", "shadows", "player", "builder", "mode", "stone_index", "ff_mode", "ff_to_sunset", "menu", "contextual", "day_count", "gems", "djinn_summon_cost", "lamps", "trail" };
 
     pub fn init(haathi: *Haathi) Game {
         const allocator = haathi.allocator;
@@ -1039,44 +1101,44 @@ pub const Game = struct {
         self.shadows.clear();
         for (0..count) |_| {
             const pos = Vec2{
-                .x = (self.rng.float(f32) - 0.5) * SCREEN_SIZE.x,
-                .y = (self.rng.float(f32) - 0.5) * SCREEN_SIZE.y,
+                .x = (self.rng.float(f32) - 0.5) * WORLD_SIZE.x,
+                .y = (self.rng.float(f32) - 0.5) * WORLD_SIZE.y,
             };
             self.shadows.addShadow(pos, self.rng);
         }
     }
 
-    pub fn collides(self: *Game, prev_pos: Vec2, pos: Vec2, player_flag: *bool) ?Vec2 {
+    pub fn collides(self: *Game, prev_pos: Vec2, pos: Vec2, player_flag: *bool, radius: f32) ?Vec2 {
         // out of bounds
-        if (pos.y > SCREEN_SIZE.y / 2) return .{
+        if (pos.y > self.world.maxY()) return .{
             .x = helpers.lerpf(prev_pos.x, pos.x, -1),
-            .y = SCREEN_SIZE.y / 2,
+            .y = self.world.maxY(),
         };
-        if (pos.x > SCREEN_SIZE.x / 2) return .{
-            .x = SCREEN_SIZE.x / 2,
+        if (pos.x > self.world.maxX()) return .{
+            .x = self.world.maxX(),
             .y = helpers.lerpf(prev_pos.y, pos.y, -1),
         };
-        if (pos.y < -SCREEN_SIZE.y / 2) return .{
+        if (pos.y < self.world.minY()) return .{
             .x = helpers.lerpf(prev_pos.x, pos.x, -1),
-            .y = -SCREEN_SIZE.y / 2,
+            .y = self.world.minY(),
         };
-        if (pos.x < -SCREEN_SIZE.x / 2) return .{
-            .x = -SCREEN_SIZE.x / 2,
+        if (pos.x < self.world.minX()) return .{
+            .x = self.world.minX(),
             .y = helpers.lerpf(prev_pos.y, pos.y, -1),
         };
-        if (pos.distanceSqr(self.player.position) < PLAYER_LIGHT_RADIUS_SQR + SHADOW_PICKUP_RADIUS_SQR) {
+        if (pos.distanceSqr(self.player.position) < PLAYER_LIGHT_RADIUS_SQR + radius * radius) {
             player_flag.* = true;
             return self.player.position;
         }
         // collide with structure
-        const address = self.world.toGridCell(pos);
+        const address = self.world.worldPosToAddress(pos);
         for (self.structures.items()) |*structure| {
             if (structure.address.equal(address)) {
-                structure.damage();
+                structure.damage(1);
                 return self.world.gridCenter(address);
             }
         }
-        if (self.trail.inRange(prev_pos, pos, SHADOW_PICKUP_RADIUS)) |point| return point;
+        if (self.trail.inRange(prev_pos, pos, radius)) |point| return point;
         return null;
     }
 
@@ -1273,9 +1335,9 @@ pub const Game = struct {
                     .position = current_pos,
                     .size = .{ .x = 200, .y = 25 },
                 },
-                .value = @intFromEnum(MenuAction.set_mode_build_trap),
+                .value = @intFromEnum(MenuAction.set_mode_build_altar),
                 .text = "Build Trap",
-                .enabled = self.gems >= self.getMenuActionCost(@intFromEnum(MenuAction.set_mode_build_trap)).?,
+                .enabled = self.gems >= self.getMenuActionCost(@intFromEnum(MenuAction.set_mode_build_altar)).?,
             },
         }) catch unreachable;
         current_pos = current_pos.add(.{ .y = -40 });
@@ -1312,19 +1374,9 @@ pub const Game = struct {
         return null;
     }
 
-    fn inTrapBounds(self: *Game, position: Vec2) ?StructureIndex {
-        for (self.structures.keys()) |skey| {
-            const trap = self.structures.getPtr(skey);
-            if (trap.structure != .trap) continue;
-            if (trap.shadow != null) continue;
-            if (trap.position.distanceSqr(position) < TRAP_RADIUS_SQR) return skey;
-        }
-        return null;
-    }
-
     fn closestSpirit(self: *const Game, position: Vec2) SpiritIndex {
         var closest_spirit: SpiritIndex = undefined;
-        var closest_distance_sqr = SCREEN_SIZE.x * SCREEN_SIZE.x * 1000000;
+        var closest_distance_sqr = WORLD_SIZE.x * WORLD_SIZE.x * 1000000;
         for (self.spirits.keys()) |skey| {
             const spirit = self.spirits.getPtr(skey);
             const distance = spirit.position.distanceSqr(position);
@@ -1415,7 +1467,7 @@ pub const Game = struct {
                             };
                         },
                         .base => unreachable,
-                        .trap => unreachable,
+                        .altar => unreachable,
                     }
                 },
             }
@@ -1500,7 +1552,7 @@ pub const Game = struct {
                         self.lamps.append(Lamp.create(output_spot, self.world)) catch unreachable;
                     },
                     .base => unreachable,
-                    .trap => unreachable,
+                    .altar => unreachable,
                 }
             },
         }
@@ -1514,10 +1566,10 @@ pub const Game = struct {
                 self.builder.mode = .build;
                 self.builder.structure = .mine;
             },
-            .set_mode_build_trap => {
+            .set_mode_build_altar => {
                 if (self.gems < COST_OF_TRAP) return;
                 self.builder.mode = .build;
-                self.builder.structure = .trap;
+                self.builder.structure = .altar;
             },
             .set_mode_build_lamp => {
                 if (self.gems < COST_OF_LAMP) return;
@@ -1593,7 +1645,6 @@ pub const Game = struct {
         self.mode = .night;
         self.addShadows(self.day_count * 4);
         self.spirits.getPtr(self.stone_index).position = GRID_CELL_SIZE.scale(0.5);
-        self.night_ticks = 0;
         self.trail.reset();
         self.trail.beginTrail(self.player.position);
         self.resetMenu();
@@ -1626,7 +1677,7 @@ pub const Game = struct {
                         for (self.paths.keys()) |pkey| {
                             const path = self.paths.getPtr(pkey);
                             const start = path.points.items[0];
-                            const pos = self.world.gridCenter(start);
+                            const pos = self.world.gridCenterScreen(start);
                             self.contextual.append(.{
                                 .text = .{
                                     .text = NUMBER_STR[self.djinns.pathCount(pkey)],
@@ -1640,7 +1691,7 @@ pub const Game = struct {
                         for (self.paths.keys()) |pkey| {
                             const path = self.paths.getPtr(pkey);
                             const start = path.points.items[0];
-                            const pos = self.world.gridCenter(start);
+                            const pos = self.world.gridCenterScreen(start);
                             self.contextual.append(.{ .button = .{
                                 .rect = .{
                                     .position = pos.add(.{ .x = -30, .y = GRID_CELL_SIZE.y * -0.65 }),
@@ -1656,7 +1707,7 @@ pub const Game = struct {
                         for (self.paths.keys()) |pkey| {
                             const path = self.paths.getPtr(pkey);
                             const start = path.points.items[0];
-                            const pos = self.world.gridCenter(start);
+                            const pos = self.world.gridCenterScreen(start);
                             self.contextual.append(.{
                                 .text = .{
                                     .text = NUMBER_STR[self.djinns.pathCount(pkey)],
@@ -1757,12 +1808,27 @@ pub const Game = struct {
     }
 
     fn createLoop(self: *Game, loop: []Vec2) void {
+        var destroyed = std.ArrayList(Destroyable).init(self.haathi.arena);
         for (self.shadows.shadows.items()) |*shadow| {
+            if (shadow.death_count != null) continue;
             if (helpers.polygonContainsPoint(loop, shadow.position, null)) {
                 shadow.markDead();
+                destroyed.append(.{ .item = .shadow, .position = shadow.position }) catch unreachable;
             }
         }
-        self.loops.append(Loop.init(self.allocator, loop)) catch unreachable;
+        for (self.structures.items()) |*str| {
+            if (str.health == 0) continue;
+            const str_pos = self.world.cellToRect(str.address).center();
+            if (helpers.polygonContainsPoint(loop, str_pos, null)) {
+                str.damage(1);
+                destroyed.append(.{ .item = .structure, .position = str_pos }) catch unreachable;
+            }
+        }
+        if (destroyed.items.len == 0) {
+            // damage base
+            self.structures.getPtr(.{ .index = 0 }).damage(3);
+        }
+        self.loops.append(Loop.init(self.allocator, loop, destroyed.items)) catch unreachable;
     }
 
     // updateGame
@@ -1772,7 +1838,7 @@ pub const Game = struct {
         _ = self.arena_handle.reset(.retain_capacity);
         self.arena = self.arena_handle.allocator();
         self.ticks = ticks;
-        const mouse_address = self.world.toGridCell(self.world.fromScreenPos(self.haathi.inputs.mouse.current_pos));
+        const mouse_address = self.world.worldPosToAddress(self.world.screenToWorld(self.haathi.inputs.mouse.current_pos));
         var moving = false;
         if (self.haathi.inputs.getKey(.w).is_down) {
             self.player.velocity.y += PLAYER_ACCELERATION;
@@ -1791,7 +1857,7 @@ pub const Game = struct {
             moving = true;
         }
         self.player.clampVelocity();
-        self.player.updatePosition(self.world);
+        self.player.updatePosition(self);
         if (!moving) self.player.dampVelocity();
         {
             var to_remove = std.ArrayList(usize).init(self.haathi.arena);
@@ -1846,7 +1912,6 @@ pub const Game = struct {
                 }
             },
             .night => {
-                self.night_ticks += 1;
                 self.player.action_available = null;
                 for (self.lamps.items) |*lamp| lamp.update();
                 self.lamps.items[0].position = self.player.position;
@@ -1866,10 +1931,6 @@ pub const Game = struct {
                 self.checkWinScenario();
                 if (BUILDER_MODE) {
                     if (self.haathi.inputs.getKey(.m).is_clicked) self.startSunrise();
-                    if (self.haathi.inputs.getKey(.n).is_clicked) {
-                        const position = self.world.fromScreenPos(self.haathi.inputs.mouse.current_pos);
-                        helpers.debugPrint("{any}", .{self.inTrapBounds(position)});
-                    }
                 }
             },
             .lost => {
@@ -1973,7 +2034,7 @@ pub const Game = struct {
             .mine => {
                 return self.isOrePatch(address) and self.getStructure(address) == null;
             },
-            .trap => {
+            .altar => {
                 return self.getSlot(address) == null and self.getStructure(address) == null and self.validPathPosition(null, address) == null and !self.isOrePatch(address);
             },
             .combiner => {
@@ -2007,13 +2068,12 @@ pub const Game = struct {
 
     fn checkLoseScenario(self: *Game) void {
         const stone_position = self.spirits.getPtr(self.stone_index).position;
-        const clamped_position = self.world.clampInBounds(stone_position);
+        const clamped_position = self.world.clampInWorldBounds(stone_position);
         if (!stone_position.equal(clamped_position)) self.mode = .lost;
     }
 
     fn checkWinScenario(self: *Game) void {
-        const complete = self.night_ticks > NIGHT_TICKS;
-        if (self.shadows.allDead() or complete) {
+        if (self.shadows.allDead()) {
             self.startSunrise();
         }
     }
@@ -2060,6 +2120,17 @@ pub const Game = struct {
         self.paths.append(path) catch unreachable;
     }
 
+    fn structureCollision(self: *const Game, p0: Vec2, p1: Vec2) ?Vec2 {
+        for (self.structures.constItems()) |str| {
+            const rect = self.world.cellToRect(str.address);
+            if (rect.contains(p1)) {
+                helpers.debugPrint("strcollision", .{});
+                return rect.intersectsLine(p0, p1);
+            }
+        }
+        return null;
+    }
+
     fn pathStarts(self: *Game, address: Vec2i) ?PathIndex {
         for (self.paths.keys()) |pkey| {
             const path = self.paths.getPtr(pkey);
@@ -2091,11 +2162,9 @@ pub const Game = struct {
     }
 
     pub fn drawCellInset(self: *Game, address: Vec2i, inset: f32, color: Vec4) void {
-        const pos = address.add(GRID_OFFSET);
-        const xpos = @as(f32, @floatFromInt(pos.x)) * GRID_CELL_SIZE.x;
-        const ypos = @as(f32, @floatFromInt(pos.y)) * GRID_CELL_SIZE.y;
+        const pos = self.world.worldToScreen(self.world.cellToRect(address).position);
         self.haathi.drawRect(.{
-            .position = .{ .x = xpos + inset, .y = ypos + inset },
+            .position = .{ .x = pos.x + inset, .y = pos.y + inset },
             .size = GRID_CELL_SIZE.subtract(.{ .x = inset * 2, .y = inset * 2 }),
             .color = color,
         });
@@ -2103,16 +2172,14 @@ pub const Game = struct {
 
     pub fn drawCellBorder(self: *Game, address: Vec2i, width: f32, color: Vec4) void {
         var path = self.haathi.arena.alloc(Vec2, 4) catch unreachable;
-        const pos = address.add(GRID_OFFSET);
-        const xpos = @as(f32, @floatFromInt(pos.x)) * GRID_CELL_SIZE.x;
-        const ypos = @as(f32, @floatFromInt(pos.y)) * GRID_CELL_SIZE.y;
+        const pos = self.world.worldToScreen(self.world.cellToRect(address).position);
         const hw = width / 2;
         const xdiff = GRID_CELL_SIZE.x - width;
         const ydiff = GRID_CELL_SIZE.y - width;
-        path[0] = .{ .x = xpos + hw, .y = ypos + hw };
-        path[1] = .{ .x = xpos + hw + xdiff, .y = ypos + hw };
-        path[2] = .{ .x = xpos + hw + xdiff, .y = ypos + hw + ydiff };
-        path[3] = .{ .x = xpos + hw, .y = ypos + hw + ydiff };
+        path[0] = .{ .x = pos.x + hw, .y = pos.y + hw };
+        path[1] = .{ .x = pos.x + hw + xdiff, .y = pos.y + hw };
+        path[2] = .{ .x = pos.x + hw + xdiff, .y = pos.y + hw + ydiff };
+        path[3] = .{ .x = pos.x + hw, .y = pos.y + hw + ydiff };
         self.haathi.drawPath(.{
             .points = path,
             .color = color,
@@ -2138,19 +2205,26 @@ pub const Game = struct {
                     self.drawCellInset(cell, 3, colors.solarized_yellow.alpha(0.4));
                 }
             }
-            self.haathi.drawLine(.{ .p0 = self.world.gridCenter(p0), .p1 = self.world.gridCenter(p1), .color = colors.solarized_yellow.alpha(0.4), .width = 12 });
+            self.haathi.drawLine(.{ .p0 = self.world.gridCenterScreen(p0), .p1 = self.world.gridCenterScreen(p1), .color = colors.solarized_yellow.alpha(0.4), .width = 12 });
         }
     }
 
     fn drawStructure(self: *Game, str: Structure) void {
-        const alpha: f32 = if (str.structure == .trap) 0.4 else 1;
+        const alpha: f32 = if (str.structure == .altar) 0.4 else 1;
         self.drawCellInset(str.address, 6, colors.solarized_blue.alpha(0.8 * alpha));
         self.haathi.drawText(.{
             .text = @tagName(str.structure),
-            .position = self.world.gridCenter(str.address),
+            .position = (self.world.gridCenterScreen(str.address)),
             .color = colors.solarized_base03.alpha(alpha),
             .style = FONTS[1],
         });
+        self.haathi.drawText(.{
+            .text = NUMBER_STR[str.health],
+            .position = (self.world.gridCenterScreen(str.address).add(.{ .y = 10 })),
+            .color = colors.solarized_base03.alpha(alpha),
+            .style = FONTS[1],
+        });
+        if (str.health == 0) self.drawCross(str.address);
         for (str.slots, 0..) |slot, i| {
             if (slot) |stype| {
                 const address = str.address.add(Orientation.fromIndex(i).toDir());
@@ -2168,7 +2242,7 @@ pub const Game = struct {
                     },
                     .dropoff => {
                         const color = colors.solarized_cyan.alpha(0.4);
-                        const center = self.world.gridCenter(address);
+                        const center = (self.world.gridCenterScreen(address));
                         const edge = center.add(dir.scale(GRID_CELL_SIZE.x * 0.5));
                         self.haathi.drawLine(.{
                             .p0 = center,
@@ -2199,7 +2273,7 @@ pub const Game = struct {
         return switch (st) {
             .base => 0,
             .mine => COST_OF_MINE,
-            .trap => COST_OF_TRAP,
+            .altar => COST_OF_TRAP,
             .lamp => COST_OF_LAMP,
             .combiner => COST_OF_COMBINER,
         };
@@ -2209,7 +2283,7 @@ pub const Game = struct {
         const action: MenuAction = @enumFromInt(action_value);
         switch (action) {
             .set_mode_build_mine => return COST_OF_MINE,
-            .set_mode_build_trap => return COST_OF_TRAP,
+            .set_mode_build_altar => return COST_OF_TRAP,
             .set_mode_build_lamp => return COST_OF_LAMP,
             .set_mode_build_combiner => return COST_OF_COMBINER,
             .action_summon_djinn => return self.djinn_summon_cost,
@@ -2218,11 +2292,11 @@ pub const Game = struct {
     }
 
     fn drawCross(self: *Game, address: Vec2i) void {
-        const cent = self.world.gridCenter(address);
-        const nw = self.world.gridCenter(address.add(.{ .x = -1, .y = 1 }));
-        const ne = self.world.gridCenter(address.add(.{ .x = 1, .y = 1 }));
-        const sw = self.world.gridCenter(address.add(.{ .x = -1, .y = -1 }));
-        const se = self.world.gridCenter(address.add(.{ .x = 1, .y = -1 }));
+        const cent = (self.world.gridCenterScreen(address));
+        const nw = (self.world.gridCenterScreen(address.add(.{ .x = -1, .y = 1 })));
+        const ne = (self.world.gridCenterScreen(address.add(.{ .x = 1, .y = 1 })));
+        const sw = (self.world.gridCenterScreen(address.add(.{ .x = -1, .y = -1 })));
+        const se = (self.world.gridCenterScreen(address.add(.{ .x = 1, .y = -1 })));
         self.haathi.drawLine(.{ .p0 = nw.lerp(cent, 0.6), .p1 = se.lerp(cent, 0.6), .color = colors.solarized_red, .width = 12 });
         self.haathi.drawLine(.{ .p0 = ne.lerp(cent, 0.6), .p1 = sw.lerp(cent, 0.6), .color = colors.solarized_red, .width = 12 });
     }
@@ -2256,15 +2330,18 @@ pub const Game = struct {
         // draw grid
         for (0..@intCast(GRID_SIZE.x)) |x| {
             for (0..@intCast(GRID_SIZE.y)) |y| {
-                const xpos = @as(f32, @floatFromInt(x)) * GRID_CELL_SIZE.x;
-                const ypos = @as(f32, @floatFromInt(y)) * GRID_CELL_SIZE.y;
-                self.haathi.drawRect(.{
-                    .position = .{ .x = xpos + 1, .y = ypos + 1 },
-                    .size = GRID_CELL_SIZE.subtract(.{ .x = 2, .y = 2 }),
-                    .color = colors.solarized_base2.alpha(0.5),
-                });
+                const cell = self.world.cell_origin.add(.{ .x = @intCast(x), .y = @intCast(y) });
+                self.drawCellInset(cell, 1, colors.solarized_base2.alpha(0.5));
             }
         }
+        if (true) {
+            self.drawCellInset(GRID_SIZE, 2, colors.solarized_cyan);
+        }
+        if (true) {
+            const cell = self.world.worldPosToAddress(self.world.screenToWorld(self.haathi.inputs.mouse.current_pos));
+            self.drawCellInset(cell, 1, colors.solarized_red);
+        }
+        //if (true) return;
         // draw ore
         for (self.world.ore_patches.items) |patch| {
             self.drawCellInset(patch.position, 3, colors.solarized_base1.alpha(0.5));
@@ -2273,18 +2350,18 @@ pub const Game = struct {
         for (self.structures.items()) |str| {
             self.drawStructure(str);
         }
-        const frame: f32 = @floatFromInt((self.steps / 8) % 8);
-        const djinn_sprite_walking = haathi_lib.Sprite{ .path = "/img/djinn_walking.png", .anchor = .{ .x = 64 * frame }, .size = .{ .x = 64, .y = 64 } };
-        const djinn_sprite_carrying = haathi_lib.Sprite{ .path = "/img/djinn_carrying.png", .anchor = .{ .x = 64 * frame }, .size = .{ .x = 64, .y = 64 } };
+        const frame: f32 = @floatFromInt((self.steps / 6) % 4);
+        const djinn_sprite_walking = haathi_lib.Sprite{ .path = "/img/djinn_walking.png", .anchor = .{ .x = 15 * frame }, .size = .{ .x = 15, .y = 28 } };
+        const djinn_sprite_carrying = haathi_lib.Sprite{ .path = "/img/djinn_carrying.png", .anchor = .{ .x = 15 * frame }, .size = .{ .x = 15, .y = 28 } };
         // draw resources
-        const mouse_address = self.world.toGridCell(self.world.fromScreenPos(self.haathi.inputs.mouse.current_pos));
+        const mouse_address = self.world.worldPosToAddress(self.world.screenToWorld(self.haathi.inputs.mouse.current_pos));
         for (self.paths.items()) |path| {
             self.drawPath(path);
         }
         self.drawPath(self.builder.current_path);
         if (self.builder.current_path.getLastOrNull()) |p0| {
             const p1 = self.builder.target;
-            self.haathi.drawLine(.{ .p0 = self.world.gridCenter(p0), .p1 = self.world.gridCenter(p1), .color = colors.solarized_yellow.alpha(0.2), .width = 10 });
+            self.haathi.drawLine(.{ .p0 = self.world.gridCenterScreen(p0), .p1 = self.world.gridCenterScreen(p1), .color = colors.solarized_yellow.alpha(0.2), .width = 10 });
         }
         for (self.djinns.djinns.items()) |djinn| {
             const alpha: f32 = if (djinn.actor.energy == 0 and djinn.actor.carrying == null) 0.4 else 1;
@@ -2295,13 +2372,12 @@ pub const Game = struct {
                     break :spr djinn_sprite_carrying;
                 }
             };
-            const dj_position = djinn.position.add(sprite.size.scale(-0.5)).add(.{ .y = 10 });
-
+            const dj_position = self.world.worldToScreen(djinn.position).add(sprite.size.scale(-0.5)).add(.{ .y = 10 });
             self.haathi.drawSprite(.{
                 .sprite = sprite,
                 .position = dj_position,
                 .x_flipped = djinn.movingLeft(),
-                .scale = .{ .x = 0.5, .y = 0.5 },
+                //.scale = .{ .x = 0.5, .y = 0.5 },
             });
             // self.haathi.drawRect(.{
             //     .position = djinn.position.add(DJINN_SIZE.scale(-0.5)),
@@ -2309,8 +2385,8 @@ pub const Game = struct {
             //     .color = colors.solarized_magenta.alpha(alpha),
             // });
             { //energy
-                const start = djinn.position.add(.{ .x = (-GRID_CELL_SIZE.x / 2) + 3, .y = (-GRID_CELL_SIZE.y / 2) + 5 });
-                const end = djinn.position.add(.{ .x = (GRID_CELL_SIZE.x / 2) - 3, .y = (-GRID_CELL_SIZE.y / 2) + 5 });
+                const start = self.world.worldToScreen(djinn.position).add(.{ .x = (-GRID_CELL_SIZE.x / 2) + 3, .y = (-GRID_CELL_SIZE.y / 2) + 5 });
+                const end = self.world.worldToScreen(djinn.position).add(.{ .x = (GRID_CELL_SIZE.x / 2) - 3, .y = (-GRID_CELL_SIZE.y / 2) + 5 });
                 self.haathi.drawLine(.{
                     .p0 = start.add(.{ .x = -1 }),
                     .p1 = end.add(.{ .x = 1 }),
@@ -2328,25 +2404,25 @@ pub const Game = struct {
             if (djinn.actor.carrying) |rsc| {
                 const framei: usize = @intFromFloat(frame);
                 self.haathi.drawSprite(.{
-                    .position = dj_position.add(ORE_START_OFFSET.scale(0.5)).add(.{
-                        .x = 0,
-                        .y = ORE_ANIMATION_OFFSETS[framei] * 0.5,
+                    .position = dj_position.add(ORE_START_OFFSET.scale(1)).add(.{
+                        .x = if (djinn.movingLeft()) ORE_START_OFFSET.x * -2 else 0,
+                        .y = ORE_ANIMATION_OFFSETS[framei],
                     }),
                     .sprite = ORE_SPRITES[rsc.value()],
-                    .scale = .{ .x = 0.5, .y = 0.5 },
+                    //.scale = .{ .x = 0.5, .y = 0.5 },
                 });
                 //self.haathi.drawText(.{ .text = NUMBER_STR[rsc.value()], .position = rpos, .color = colors.white.alpha(0.5), .style = FONTS[1] });
             }
         }
         for (self.resources.items) |rsc| {
             self.haathi.drawSprite(.{
-                .position = rsc.position,
+                .position = self.world.worldToScreen(rsc.position),
                 .sprite = ORE_SPRITES[rsc.resource.value()],
                 .scale = .{ .x = rsc.scale, .y = rsc.scale },
                 .anchor = .center,
             });
         }
-        if (self.builder.mode != .menu) self.haathi.drawText(.{ .text = @tagName(self.builder.mode), .position = self.haathi.inputs.mouse.current_pos, .color = colors.solarized_base03 });
+        if (self.builder.mode != .menu) self.haathi.drawText(.{ .text = @tagName(self.builder.mode), .position = self.haathi.inputs.mouse.current_pos.add(.{ .y = -20 }), .style = FONTS[1], .color = colors.solarized_base03.alpha(0.7) });
         if (self.builder.mode == .loop_create) {
             // draw mouse
             self.drawCellInset(mouse_address, 10, colors.solarized_yellow);
@@ -2378,7 +2454,7 @@ pub const Game = struct {
             });
             for (self.spirits.items()) |spirit| {
                 self.haathi.drawRect(.{
-                    .position = self.world.toScreenPos(spirit.position),
+                    .position = self.world.worldToScreen(spirit.position),
                     .centered = true,
                     .radius = SPIRIT_LIGHT_RADIUS,
                     .size = SPIRIT_LIGHT_SIZE,
@@ -2390,7 +2466,7 @@ pub const Game = struct {
                 const beam_multiplier = @as(f32, @floatFromInt(lamp.target_countdown)) / LAMP_RESET_TICKS;
                 const light_multiplier = 1 - beam_multiplier;
                 self.haathi.drawRect(.{
-                    .position = self.world.toScreenPos(lamp.position),
+                    .position = self.world.worldToScreen(lamp.position),
                     .centered = true,
                     .radius = lamp.radius,
                     .size = .{ .x = lamp.radius * 2, .y = lamp.radius * 2 },
@@ -2399,8 +2475,8 @@ pub const Game = struct {
                 if (lamp.target) |skey| {
                     const shadow = self.shadows.shadows.getPtr(skey);
                     self.haathi.drawLine(.{
-                        .p0 = self.world.toScreenPos(lamp.position),
-                        .p1 = self.world.toScreenPos(shadow.position),
+                        .p0 = self.world.worldToScreen(lamp.position),
+                        .p1 = self.world.worldToScreen(shadow.position),
                         .color = colors.solarized_red.lerp(colors.solarized_base3, 0.8).alpha(beam_multiplier),
                         .width = 12,
                     });
@@ -2408,51 +2484,34 @@ pub const Game = struct {
             }
             for (self.shadows.shadows.items()) |shadow| {
                 if (shadow.dead) continue;
-                const scale: f32 = if (shadow.death_count != null) @as(f32, @floatFromInt(shadow.death_count.?)) / TRAP_TICKS else 1;
+                const scale: f32 = if (shadow.death_count != null) @as(f32, @floatFromInt(shadow.death_count.?)) / LOOP_KILL_TICKS else 1;
+                const color = shadow.shadow.color();
                 self.haathi.drawRect(.{
-                    .position = self.world.toScreenPos(shadow.position),
-                    .size = SHADOW_SIZE,
-                    .color = colors.solarized_cyan.alpha(scale),
+                    .position = self.world.worldToScreen(shadow.position),
+                    .size = shadow.shadow.size(),
+                    .color = color.alpha(scale),
                     .centered = true,
                 });
             }
             for (self.spirits.items()) |spirit| {
                 self.haathi.drawRect(.{
-                    .position = self.world.toScreenPos(spirit.position).add(SPIRIT_SIZE.scale(-0.5)),
+                    .position = self.world.worldToScreen(spirit.position).add(SPIRIT_SIZE.scale(-0.5)),
                     .size = SPIRIT_SIZE,
                     .color = colors.solarized_blue.lerp(colors.white, 0.5),
                 });
             }
-            for (self.structures.items()) |trap| {
-                if (trap.structure != .trap) continue;
+            for (self.structures.items()) |altar| {
+                if (altar.structure != .altar) continue;
                 self.haathi.drawRect(.{
-                    .position = self.world.toScreenPos(trap.position).add(TRAP_SIZE.scale(-0.5)),
-                    .size = TRAP_SIZE,
+                    .position = self.world.worldToScreen(altar.position).add(GRID_CELL_SIZE.scale(-0.5)),
+                    .size = GRID_CELL_SIZE,
                     .color = colors.solarized_magenta,
                 });
                 self.haathi.drawText(.{
-                    .text = "trap",
-                    .position = self.world.toScreenPos(trap.position),
+                    .text = "altar",
+                    .position = self.world.worldToScreen(altar.position),
                     .color = colors.white,
                 });
-                if (trap.shadow != null) {
-                    const progress: f32 = (TRAP_TICKS - @as(f32, @floatFromInt(trap.count))) / TRAP_TICKS;
-                    {
-                        const start = self.world.toScreenPos(trap.position).add(TRAP_SIZE.yVec().scale(0.4)).add(.{ .x = -TRAP_INDICATOR_SIZE / 2 });
-                        const end = start.add(.{ .x = TRAP_INDICATOR_SIZE });
-                        self.haathi.drawLine(.{ .p0 = start, .p1 = end, .color = colors.solarized_base03, .width = 7 });
-                        self.haathi.drawLine(.{ .p0 = start, .p1 = start.lerp(end, progress), .color = colors.solarized_base00, .width = 7 });
-                    }
-                    {
-                        const shadow_size = SHADOW_SIZE.scale(1.0 - progress);
-                        self.haathi.drawRect(.{
-                            .position = self.world.toScreenPos(trap.position),
-                            .size = shadow_size,
-                            .color = colors.solarized_cyan,
-                            .centered = true,
-                        });
-                    }
-                }
             }
             for (self.loops.items) |loop| {
                 const alpha: f32 = @as(f32, @floatFromInt(loop.life)) / LOOP_LIFE_TICKS;
@@ -2468,6 +2527,32 @@ pub const Game = struct {
                     .width = 6,
                     .closed = true,
                 });
+                self.haathi.drawRect(.{
+                    .position = self.world.worldToScreen(loop.center),
+                    .size = .{ .x = 10, .y = 25 },
+                    .color = colors.solarized_orange.alpha(alpha),
+                    .centered = true,
+                });
+                if (loop.destroyed.items.len == 0) {
+                    self.haathi.drawText(.{
+                        .text = "Summoned in vain",
+                        .position = self.world.worldToScreen(loop.center),
+                        .color = colors.solarized_base03.alpha(alpha),
+                        .alignment = .center,
+                    });
+                    self.haathi.drawLine(.{
+                        .p0 = self.world.worldToScreen(loop.center),
+                        .p1 = self.world.worldToScreen(.{}),
+                        .color = colors.solarized_orange.alpha(alpha),
+                    });
+                }
+                for (loop.destroyed.items) |dst| {
+                    self.haathi.drawLine(.{
+                        .p0 = self.world.worldToScreen(loop.center),
+                        .p1 = self.world.worldToScreen(dst.position),
+                        .color = colors.solarized_orange.alpha(alpha),
+                    });
+                }
             }
             // draw trail
             {
@@ -2475,13 +2560,13 @@ pub const Game = struct {
                 if (len > 1) {
                     for (self.trail.points.items[0 .. len - 1], self.trail.points.items[1..]) |p0, p1| {
                         self.haathi.drawLine(.{
-                            .p0 = self.world.toScreenPos(p0),
-                            .p1 = self.world.toScreenPos(p1),
+                            .p0 = self.world.worldToScreen(p0),
+                            .p1 = self.world.worldToScreen(p1),
                             .color = colors.solarized_red.lerp(colors.white, 0.4),
                             .width = 6,
                         });
                         self.haathi.drawRect(.{
-                            .position = self.world.toScreenPos(p1),
+                            .position = self.world.worldToScreen(p1),
                             .size = .{ .x = 5, .y = 5 },
                             .centered = true,
                             .radius = 10,
@@ -2489,15 +2574,15 @@ pub const Game = struct {
                         });
                     }
                     self.haathi.drawLine(.{
-                        .p0 = self.world.toScreenPos(self.player.position),
-                        .p1 = self.world.toScreenPos(self.trail.points.items[len - 1]),
+                        .p0 = self.world.worldToScreen(self.player.position),
+                        .p1 = self.world.worldToScreen(self.trail.points.items[len - 1]),
                         .color = colors.solarized_red.lerp(colors.white, 0.4),
                         .width = 6,
                     });
                 }
                 if (self.trail.intersection) |point| {
                     self.haathi.drawRect(.{
-                        .position = self.world.toScreenPos(point),
+                        .position = self.world.worldToScreen(point),
                         .size = .{ .x = 15, .y = 15 },
                         .centered = true,
                         .radius = 30,
@@ -2515,20 +2600,20 @@ pub const Game = struct {
         }
         // draw player
         self.haathi.drawRect(.{
-            .position = self.world.toScreenPos(self.player.position).add(PLAYER_SIZE.scale(-0.5)),
+            .position = self.world.worldToScreen(self.player.position).add(PLAYER_SIZE.scale(-0.5)),
             .size = PLAYER_SIZE,
             .color = colors.solarized_red,
         });
         if (self.player.actor.carrying) |rsc| {
             self.haathi.drawSprite(.{
-                .position = self.world.toScreenPos(self.player.position).add(PLAYER_SIZE.scale(-0.5)).add(PLAYER_SIZE.yVec()).add(PLAYER_SIZE.xVec().scale(0.5)),
+                .position = self.world.worldToScreen(self.player.position).add(PLAYER_SIZE.scale(-0.5)).add(PLAYER_SIZE.yVec()).add(PLAYER_SIZE.xVec().scale(0.5)),
                 .sprite = ORE_SPRITES[rsc.value()],
                 .anchor = .center,
             });
         }
         self.haathi.drawText(.{
             .text = "you",
-            .position = self.world.toScreenPos(self.player.position).add(PLAYER_SIZE.scale(0.0)),
+            .position = self.world.worldToScreen(self.player.position).add(PLAYER_SIZE.scale(0.0)),
             .color = colors.solarized_base03,
         });
         if (self.mode == .day) {
@@ -2542,19 +2627,19 @@ pub const Game = struct {
         }
         if (self.mode == .night) {
             // timer
-            const start = Vec2{ .x = 122, .y = 20 };
-            const end = Vec2{ .x = SCREEN_SIZE.x - (GRID_CELL_SIZE.x * 1) - 2, .y = 20 };
-            self.haathi.drawText(.{ .text = "Night:", .position = .{ .x = start.x - 8, .y = 14 }, .color = colors.solarized_base03, .alignment = .right });
-            self.haathi.drawLine(.{ .p0 = start.add(.{ .x = -2 }), .p1 = end.add(.{ .x = 2 }), .width = 25, .color = colors.solarized_base3 });
-            const progress: f32 = @as(f32, @floatFromInt(self.night_ticks)) / @as(f32, @floatFromInt(NIGHT_TICKS));
-            self.haathi.drawLine(.{ .p0 = start, .p1 = start.lerp(end, progress), .width = 20, .color = colors.solarized_base03 });
+            // const start = Vec2{ .x = 122, .y = 20 };
+            // const end = Vec2{ .x = SCREEN_SIZE.x - (GRID_CELL_SIZE.x * 1) - 2, .y = 20 };
+            // self.haathi.drawText(.{ .text = "Night:", .position = .{ .x = start.x - 8, .y = 14 }, .color = colors.solarized_base03, .alignment = .right });
+            // self.haathi.drawLine(.{ .p0 = start.add(.{ .x = -2 }), .p1 = end.add(.{ .x = 2 }), .width = 25, .color = colors.solarized_base3 });
+            // const progress: f32 = @as(f32, @floatFromInt(self.night_ticks)) / @as(f32, @floatFromInt(NIGHT_TICKS));
+            // self.haathi.drawLine(.{ .p0 = start, .p1 = start.lerp(end, progress), .width = 20, .color = colors.solarized_base03 });
         }
         if (self.player.action_available != null and self.player.action_available.?.can_be_done) {
             self.drawCellBorder(mouse_address, 4, colors.solarized_base03);
             const slot = self.structures.getPtr(self.player.action_available.?.structure).slots[self.player.action_available.?.slot_index].?;
             self.haathi.drawText(.{
                 .text = @tagName(slot),
-                .position = self.world.gridCenter(self.player.action_available.?.address).add(GRID_CELL_SIZE.yVec().scale(0.55)),
+                .position = self.world.gridCenterScreen(self.player.action_available.?.address).add(GRID_CELL_SIZE.yVec().scale(0.55)),
                 .color = colors.solarized_base03,
             });
         } else {
@@ -2562,11 +2647,11 @@ pub const Game = struct {
                 const slot = self.structures.getPtr(action.structure).slots[action.slot_index].?;
                 self.haathi.drawText(.{
                     .text = @tagName(slot),
-                    .position = self.world.gridCenter(mouse_address).add(GRID_CELL_SIZE.yVec().scale(0.55)),
+                    .position = self.world.gridCenterScreen(mouse_address).add(GRID_CELL_SIZE.yVec().scale(0.55)),
                     .color = colors.solarized_base03.alpha(0.6),
                 });
             }
-            self.drawCellBorder(self.world.toGridCell(self.player.position), 1, colors.solarized_base03.alpha(0.3));
+            self.drawCellBorder(self.world.worldPosToAddress(self.player.position), 1, colors.solarized_base03.alpha(0.3));
         }
         for (self.contextual.items) |item| {
             switch (item) {
@@ -2632,6 +2717,23 @@ pub const Game = struct {
                 const text = std.fmt.allocPrintZ(self.haathi.arena, "Ore: {d}", .{self.inventory[0]}) catch unreachable;
                 self.haathi.drawText(.{ .text = text, .position = .{ .x = x_start, .y = 50 }, .color = colors.solarized_base03, .alignment = .left });
             }
+        }
+        if (false) {
+            const rect = self.world.cellToRect(self.player.address);
+            self.haathi.drawRect(.{
+                .position = self.world.worldToScreen(rect.position),
+                .size = rect.size,
+                .color = colors.solarized_blue,
+            });
+        }
+        if (false) {
+            const pos = self.world.screenToWorld(self.haathi.inputs.mouse.current_pos);
+            const rect = self.world.cellToRect(self.world.worldPosToAddress(pos));
+            self.haathi.drawRect(.{
+                .position = self.world.worldToScreen(rect.position),
+                .size = rect.size,
+                .color = colors.solarized_green,
+            });
         }
         if (false) { // testing lerp
             const center = Vec2i{};

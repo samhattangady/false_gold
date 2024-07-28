@@ -30,8 +30,8 @@ strategic depth during the day, which overall forms a tight loop between the two
 
 The day time will be fixed by "energy", so the player can only do a fixed number of actions, which
 they can take as much time as required. Having djinns do these tasks means that the player has
-energy to do other things. Additionally, the player can build some kind of automation lines (maybe
-conveyors or something along those lines), and their configuration will matter in the night phase.
+energy to do other things. Additionally, the player can build some kind of automation lines 
+(paths for djinns to follow).The structure placements and path configuration will matter in the night phase.
 So there will be tradeoffs between being efficient with the automation, and having some inefficiency
 to make the night time defenses easier.
 
