@@ -487,3 +487,10 @@ timing. Should be okay. I don't want to run the distance checks every frame,
 rather just when the players direction has changed.
 
 Honestly super cool now that we have the sounds and alerts.
+
+We need to add some kind of pressure at night. Like a timer, after which one
+random shadow attacks base. Lets try that out.
+
+NEXT: Figure out aggression. We want it to attack once and then lose
+aggression. Right now its not attacking. Just going towards and getting stuck.
+Also it gets stuck when we block it. We want it to kinda keep bouncing off..

@@ -61,6 +61,9 @@ const FF_STEPS = 300;
 const EXTRA_FF_STEPS = 1000;
 const NIGHT_TICKS = 60 * 60;
 const RESOURCE_ANIMATION_TICKS = DJINN_TICK_COUNT;
+const AGGRESSIVE_TICK_START = 60 * 30;
+const AGGRESSION_TICK_FALLOFF = 60 * 5;
+const AGGRESSION_TICK_MINIMUM = 60 * 3;
 
 const COST_OF_MINE = 5;
 const COST_OF_TRAP = 3;
@@ -70,7 +73,7 @@ const START_COST_OF_DJINN = 1;
 const START_GEMS = COST_OF_MINE;
 const TRAIL_SEGMENT_LEN = 15;
 const TRAIL_SEGMENT_LEN_SQR = TRAIL_SEGMENT_LEN * TRAIL_SEGMENT_LEN;
-const TRAIL_TOTAL_LEN = TRAIL_SEGMENT_LEN * 30;
+const TRAIL_TOTAL_LEN = TRAIL_SEGMENT_LEN * 40;
 const TRAIL_TOTAL_LEN_SQR = TRAIL_TOTAL_LEN * TRAIL_TOTAL_LEN;
 
 const DJINN_TICK_COUNT = 15;
@@ -824,6 +827,7 @@ pub const Shadow = struct {
     velocity: Vec2 = .{},
     vel_mag: f32,
     radius: f32,
+    target: ?Vec2 = null,
     dead: bool = false,
     death_count: ?u16 = null,
 
@@ -855,6 +859,10 @@ pub const Shadow = struct {
         const old_v = self.vel_mag;
         self.vel_mag = @max(self.shadow.velocityMax(), self.vel_mag * SHADOW_DECELERATE_RATE);
         if (old_v != self.vel_mag) self.velocity = self.velocity.normalize().scale(self.vel_mag);
+        if (self.target) |target| {
+            self.velocity = target.subtract(self.position).normalize().scale(self.vel_mag);
+            dir_changed = true;
+        }
         const new_position = self.position.add(self.velocity);
         if (game.getWorldRepeller(self.position, new_position, self.radius)) |repeller| {
             self.velocity = self.position.subtract(repeller).normalize().scale(self.vel_mag);
@@ -862,6 +870,7 @@ pub const Shadow = struct {
         } else if (game.collides(self.position, new_position, self.shadow)) |center| {
             self.velocity = self.position.subtract(center).normalize().scale(self.vel_mag);
             dir_changed = true;
+            self.target = null;
         } else if (game.inPlayerRange(self.position, new_position, self.radius)) |center| {
             self.vel_mag = self.shadow.velocityScared();
             self.velocity = self.position.subtract(center).normalize().scale(self.vel_mag);
@@ -871,6 +880,14 @@ pub const Shadow = struct {
             self.position = new_position;
         }
         return dir_changed;
+    }
+
+    pub fn active(self: *const Shadow) bool {
+        return self.death_count == null;
+    }
+
+    pub fn setAggressive(self: *Shadow, target: Vec2) void {
+        self.target = target;
     }
 
     pub fn markDead(self: *Shadow) void {
@@ -915,6 +932,30 @@ pub const ShadowSystem = struct {
             if (!shadow.dead) return false;
         }
         return true;
+    }
+
+    pub fn activeCount(self: *ShadowSystem) usize {
+        var count: usize = 0;
+        for (self.shadows.constItems()) |shadow| {
+            if (shadow.death_count == null) count += 1;
+        }
+        return count;
+    }
+
+    pub fn setAggressive(self: *ShadowSystem, count: usize, game: *Game) void {
+        var active = std.ArrayList(ShadowIndex).init(game.haathi.arena);
+        for (self.shadows.keys()) |skey| {
+            const shadow = self.shadows.getPtr(skey);
+            if (shadow.active()) active.append(skey) catch unreachable;
+        }
+        while (active.items.len > count) {
+            const index = game.rng.uintLessThan(usize, active.items.len);
+            _ = active.swapRemove(index);
+        }
+        for (active.items) |skey| {
+            const shadow = self.shadows.getPtr(skey);
+            shadow.setAggressive(game.basePosition());
+        }
     }
 
     pub fn update(self: *ShadowSystem, game: *Game) void {
@@ -1070,7 +1111,7 @@ const AlertSystem = struct {
         for (self.alerts.items, 0..) |*alert, i| {
             alert.predicted_steps -= 1;
             const shadow = game.shadows.shadows.getPtr(alert.shadow);
-            if (shadow.dead) to_remove.insert(0, i) catch unreachable;
+            if (shadow.death_count != null) to_remove.insert(0, i) catch unreachable;
         }
         for (to_remove.items) |i| _ = self.alerts.swapRemove(i);
         if (self.alerts.items.len == 0) {
@@ -1108,6 +1149,7 @@ const AlertSystem = struct {
 pub const Game = struct {
     haathi: *Haathi,
     ticks: u64 = 0,
+    steps: usize = 0,
     world: World,
     resources: std.ArrayList(Resource),
     structures: ConstIndexArray(StructureIndex, Structure),
@@ -1122,8 +1164,6 @@ pub const Game = struct {
     player: Player = .{},
     trail: Trail,
     builder: Builder,
-    xosh: std.Random.Xoshiro256,
-    rng: std.Random = undefined,
     mode: GameMode = .sunrise,
     stone_index: SpiritIndex = undefined,
     ff_mode: if (BUILDER_MODE) bool else void = if (BUILDER_MODE) false else {},
@@ -1132,14 +1172,48 @@ pub const Game = struct {
     contextual: std.ArrayList(MenuItem),
     day_count: u16 = 0,
     gems: usize = 0,
-    steps: usize = 0,
     djinn_summon_cost: u32 = START_COST_OF_DJINN,
+    aggression_timer: usize = 0,
+    aggression_ticks: usize = 0,
+    aggression_count: usize = 0,
 
+    xosh: std.Random.Xoshiro256,
+    rng: std.Random = undefined,
     allocator: std.mem.Allocator,
     arena_handle: std.heap.ArenaAllocator,
     arena: std.mem.Allocator,
 
-    pub const serialize_fields = [_][]const u8{ "ticks", "steps", "world", "resources", "structures", "paths", "spirits", "inventory", "djinns", "shadows", "player", "builder", "mode", "stone_index", "ff_mode", "ff_to_sunset", "menu", "contextual", "day_count", "gems", "djinn_summon_cost", "lamps", "trail", "alerts" };
+    pub const serialize_fields = [_][]const u8{
+        "ticks",
+        "steps",
+        "world",
+        "resources",
+        "structures",
+        "paths",
+        "spirits",
+        "lamps",
+        "loops",
+        "alerts",
+        "inventory",
+        "djinns",
+        "shadows",
+        "player",
+        "trail",
+        "builder",
+        "mode",
+        "stone_index",
+        "ff_mode",
+        "ff_to_sunset",
+        "menu",
+        "contextual",
+        "day_count",
+        "gems",
+        "djinn_summon_cost",
+        "aggression_timer",
+        "aggression_ticks",
+        "aggression_count",
+        "djinn_summon_cost",
+    };
 
     pub fn init(haathi: *Haathi) Game {
         haathi.loadSound("audio/damage.wav", false);
@@ -1540,6 +1614,10 @@ pub const Game = struct {
         return closest_spirit;
     }
 
+    pub fn basePosition(self: *const Game) Vec2 {
+        return self.structures.getPtr(.{ .index = 0 }).position;
+    }
+
     fn actionAvailable(self: *Game, address: Vec2i, actor: Actor) ?Action {
         // check if address is slot
         const is_carrying = actor.carrying != null;
@@ -1795,12 +1873,15 @@ pub const Game = struct {
     fn startNight(self: *Game) void {
         self.day_count += 1;
         self.mode = .night;
-        self.addShadows(self.day_count * 4);
+        self.addShadows(self.day_count * 2 + 4);
         self.spirits.getPtr(self.stone_index).position = GRID_CELL_SIZE.scale(0.5);
         self.trail.reset();
         self.trail.beginTrail(self.player.position);
         self.resetMenu();
         self.resetLamps();
+        self.aggression_timer = AGGRESSIVE_TICK_START;
+        self.aggression_ticks = self.aggression_timer;
+        self.aggression_count = 0;
     }
 
     fn resetLamps(self: *Game) void {
@@ -1910,6 +1991,7 @@ pub const Game = struct {
         self.setupSunriseMenu(true);
         self.setupContextual();
         self.day_count += 1;
+        self.alerts.clear();
     }
 
     fn startSunset(self: *Game) void {
@@ -2014,8 +2096,26 @@ pub const Game = struct {
         if (destroyed.items.len == 0) {
             // damage base
             self.damageStructure(.{ .index = 0 }, 3);
+        } else {
+            self.aggression_ticks = self.aggression_timer;
         }
         self.loops.append(Loop.init(self.allocator, loop, destroyed.items)) catch unreachable;
+    }
+
+    fn handleAggression(self: *Game) void {
+        if (self.aggression_ticks > 0) {
+            self.aggression_ticks -= 1;
+        } else {
+            self.aggression_count += @max(self.aggression_count, 1);
+            if (self.aggression_timer > AGGRESSION_TICK_FALLOFF) {
+                self.aggression_timer -= AGGRESSION_TICK_FALLOFF;
+                self.aggression_timer = @max(AGGRESSION_TICK_MINIMUM, self.aggression_timer);
+            } else {
+                self.aggression_timer = AGGRESSION_TICK_MINIMUM;
+            }
+            self.aggression_ticks = self.aggression_timer;
+            self.shadows.setAggressive(self.aggression_count, self);
+        }
     }
 
     // updateGame
@@ -2115,6 +2215,7 @@ pub const Game = struct {
                 self.shadows.update(self);
                 for (self.structures.items()) |*str| str.update(self);
                 for (self.loops.items) |*loop| loop.update();
+                self.handleAggression();
                 self.checkLoseScenario();
                 self.checkWinScenario();
                 self.alerts.update(self);
@@ -2688,6 +2789,31 @@ pub const Game = struct {
                 if (shadow.dead) continue;
                 const scale: f32 = if (shadow.death_count != null) @as(f32, @floatFromInt(shadow.death_count.?)) / LOOP_KILL_TICKS else 1;
                 const color = shadow.shadow.color();
+                if (shadow.target) |target| {
+                    self.haathi.drawRect(.{
+                        .position = self.world.worldToScreen(shadow.position),
+                        .size = shadow.shadow.size().scale(1.5),
+                        .color = colors.white.alpha(scale),
+                        .centered = true,
+                    });
+                    const toward = shadow.position.lerp(target, 0.5);
+                    self.haathi.drawLine(.{
+                        .p0 = self.world.worldToScreen(shadow.position),
+                        .p1 = self.world.worldToScreen(toward),
+                        .color = colors.white.alpha(scale),
+                        .width = 8,
+                    });
+                    const point = toward.lerp(target, 0.5);
+                    const perp = target.subtract(toward).perpendicular().scale(60);
+                    const tri = self.haathi.arena.alloc(Vec2, 3) catch unreachable;
+                    tri[0] = self.world.worldToScreen(point);
+                    tri[1] = self.world.worldToScreen(point.add(perp));
+                    tri[2] = self.world.worldToScreen(point.add(perp.scale(-1)));
+                    self.haathi.drawPoly(.{
+                        .points = tri,
+                        .color = colors.white.alpha(scale),
+                    });
+                }
                 self.haathi.drawRect(.{
                     .position = self.world.worldToScreen(shadow.position),
                     .size = shadow.shadow.size(),
@@ -2931,6 +3057,23 @@ pub const Game = struct {
                 const text = std.fmt.allocPrintZ(self.haathi.arena, "Ore: {d}", .{self.inventory[0]}) catch unreachable;
                 self.haathi.drawText(.{ .text = text, .position = .{ .x = x_start, .y = 50 }, .color = colors.solarized_base03, .alignment = .left });
             }
+        }
+        if (self.mode == .night) {
+            const night_progress = @as(f32, @floatFromInt(self.aggression_ticks)) / @as(f32, @floatFromInt(self.aggression_timer));
+            const start = Vec2{ .x = 32, .y = 20 };
+            const end = Vec2{ .x = SCREEN_SIZE.x - 32, .y = 20 };
+            self.haathi.drawLine(.{
+                .p0 = start.add(.{ .x = -3 }),
+                .p1 = end.add(.{ .x = 3 }),
+                .color = colors.solarized_base01,
+                .width = 24,
+            });
+            self.haathi.drawLine(.{
+                .p0 = start,
+                .p1 = start.lerp(end, night_progress),
+                .color = colors.solarized_base03,
+                .width = 18,
+            });
         }
         for (self.alerts.alerts.items) |alert| {
             const spos = self.shadows.shadows.getPtr(alert.shadow).position;
