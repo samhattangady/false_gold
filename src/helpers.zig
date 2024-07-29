@@ -55,6 +55,16 @@ pub const Orientation = enum {
         unreachable;
     }
 
+    // standard is south
+    pub fn toDegrees(self: *const Orientation) f32 {
+        return switch (self.*) {
+            .n => 0,
+            .e => 90,
+            .s => 180,
+            .w => 270,
+        };
+    }
+
     pub fn vec(self: *const Orientation) Vec2 {
         return switch (self.*) {
             .n => .{ .x = 0, .y = 1 },

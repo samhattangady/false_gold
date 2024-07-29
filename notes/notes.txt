@@ -529,3 +529,11 @@ NEXT: Fix the splitter. If something is dropped off, it doesnt split it once
 the slot clears. Also code might be broken because we were trying to make the
 splitter action based instead of dropoff based.
 Nice. That also works.
+
+Okay. The splitter now works. I think I also want to have some pressure
+overnight. Possibly tasks that takeup / save gems. That's summoning. I think
+those are extra features right now. Instead we want to work on getting the
+full flow working. Lets see.
+
+So base destruction then. And repair. Ideally we need multiple currencies, but
+that can be done later.

@@ -181,7 +181,7 @@ const setCursor = (style) => {
   document.body.style.cursor = wasmString(style).replace("_", "-");
 }
 
-const drawImage = (raw_image_path, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight, x_flipped, y_flipped) => {
+const drawImage = (raw_image_path, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight, x_flipped, y_flipped, rotation) => {
   const image_path = wasmString(raw_image_path);
   let image = images[image_path];
   if (image == undefined) {
@@ -197,6 +197,7 @@ const drawImage = (raw_image_path, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHei
   if (x_flipped) {
     ctx.scale(-1,1);
   }
+  ctx.rotate(rotation * Math.PI/180);
   ctx.drawImage(image, sx, sy, sWidth, sHeight, -dWidth/2, dHeight/2, dWidth, -dHeight);
   ctx.restore();
 }

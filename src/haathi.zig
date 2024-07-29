@@ -179,7 +179,7 @@ pub const Haathi = struct {
                         },
                     }
                     const scale = sprite.scale;
-                    c.drawImage(sprite.sprite.path[0..].ptr, sx, sprite.sprite.anchor.y, sprite.sprite.size.x, sprite.sprite.size.y, position.x, position.y, sprite.sprite.size.x * scale.x, sprite.sprite.size.y * scale.y, sprite.x_flipped, sprite.y_flipped);
+                    c.drawImage(sprite.sprite.path[0..].ptr, sx, sprite.sprite.anchor.y, sprite.sprite.size.x, sprite.sprite.size.y, position.x, position.y, sprite.sprite.size.x * scale.x, sprite.sprite.size.y * scale.y, sprite.x_flipped, sprite.y_flipped, sprite.rotation);
                 },
             }
         }
@@ -302,4 +302,5 @@ pub const DrawSpriteOptions = struct {
     anchor: SpriteAnchor = .top_left,
     x_flipped: bool = false,
     y_flipped: bool = false,
+    rotation: f32 = 0,
 };
