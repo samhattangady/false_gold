@@ -69,11 +69,15 @@ const COST_OF_MINE = 5;
 const COST_OF_TRAP = 3;
 const COST_OF_LAMP = 2;
 const COST_OF_COMBINER = 10;
+const COST_OF_SPLITTER = 10;
 const START_COST_OF_DJINN = 1;
 const START_GEMS = COST_OF_MINE;
 const TRAIL_SEGMENT_LEN = 15;
 const TRAIL_SEGMENT_LEN_SQR = TRAIL_SEGMENT_LEN * TRAIL_SEGMENT_LEN;
-const TRAIL_TOTAL_LEN = TRAIL_SEGMENT_LEN * 40;
+const TRAIL_SEGMENT_NUM_TICKS: usize = (TRAIL_SEGMENT_LEN / PLAYER_VELOCITY_MAX) + if (TRAIL_SEGMENT_LEN % PLAYER_VELOCITY_MAX == 0) 0 else 1;
+const TRAIL_SEGMENT_LIFETIME = TRAIL_SEGMENT_NUM_TICKS * (TRAIL_NUM_SEGMENTS + 20);
+const TRAIL_NUM_SEGMENTS = 40;
+const TRAIL_TOTAL_LEN = TRAIL_SEGMENT_LEN * TRAIL_NUM_SEGMENTS;
 const TRAIL_TOTAL_LEN_SQR = TRAIL_TOTAL_LEN * TRAIL_TOTAL_LEN;
 
 const DJINN_TICK_COUNT = 15;
@@ -198,20 +202,26 @@ const World = struct {
 
 const Trail = struct {
     points: std.ArrayList(Vec2),
+    lifetimes: std.ArrayList(usize),
     length: f32 = 0,
     intersection: ?Vec2 = null,
     intersection_index: usize = 0,
 
     pub fn init(allocator: std.mem.Allocator) Trail {
-        return .{ .points = std.ArrayList(Vec2).init(allocator) };
+        return .{
+            .points = std.ArrayList(Vec2).init(allocator),
+            .lifetimes = std.ArrayList(usize).init(allocator),
+        };
     }
 
     pub fn deinit(self: *Trail) void {
         self.points.deinit();
+        self.lifetimes.deinit();
     }
 
     pub fn reset(self: *Trail) void {
         self.points.clearRetainingCapacity();
+        self.lifetimes.clearRetainingCapacity();
         self.length = 0;
         self.intersection = null;
     }
@@ -219,6 +229,7 @@ const Trail = struct {
     pub fn beginTrail(self: *Trail, position: Vec2) void {
         self.reset();
         self.points.append(position) catch unreachable;
+        self.lifetimes.append(TRAIL_SEGMENT_LIFETIME) catch unreachable;
     }
 
     pub fn endTrail(self: *Trail, position: Vec2) void {
@@ -257,15 +268,34 @@ const Trail = struct {
     pub fn update(self: *Trail, position: Vec2) void {
         if (self.intersection != null) return;
         if (self.points.items.len == 0) return;
+        if (self.points.items.len > 2) {
+            var remove = false;
+            for (self.lifetimes.items, 0..) |*lt, i| {
+                if (lt.* > 0) {
+                    lt.* -= 1;
+                } else {
+                    if (i == 0) {
+                        remove = true;
+                        const old_first = self.points.orderedRemove(0);
+                        const new_first = self.points.items[0];
+                        const to_sub = old_first.distanceSqr(new_first);
+                        self.length -= @sqrt(to_sub);
+                    }
+                }
+            }
+            if (remove) _ = self.lifetimes.orderedRemove(0);
+        }
         const prev = self.points.getLast();
         const dist = prev.distanceSqr(position);
         if (dist > TRAIL_SEGMENT_LEN_SQR) {
             if (self.intersects(position, prev, &self.intersection_index)) |point| {
                 self.intersection = point;
                 self.points.append(point) catch unreachable;
+                self.lifetimes.append(TRAIL_SEGMENT_LIFETIME) catch unreachable;
                 return;
             }
             self.points.append(position) catch unreachable;
+            self.lifetimes.append(TRAIL_SEGMENT_LIFETIME) catch unreachable;
             self.length += @sqrt(dist);
         }
         if (self.length > TRAIL_TOTAL_LEN) {
@@ -274,7 +304,9 @@ const Trail = struct {
             const new_first = self.points.items[0];
             const to_sub = old_first.distanceSqr(new_first);
             self.length -= @sqrt(to_sub);
+            _ = self.lifetimes.orderedRemove(0);
         }
+        if (self.lifetimes.items.len != self.points.items.len) helpers.debugPrint("trail mismatch!! HEEELP!! points={d}, lts={d}", .{ self.points.items.len, self.lifetimes.items.len });
     }
 };
 
@@ -340,14 +372,16 @@ pub const StructureType = enum {
     altar,
     lamp,
     combiner,
+    splitter,
 
     pub fn startingHealth(self: *const StructureType) u16 {
         return switch (self.*) {
-            .base => 500,
+            .base => 200,
             .mine => 50,
-            .altar => 10,
-            .lamp => 10,
+            .altar => 40,
+            .lamp => 40,
             .combiner => 50,
+            .splitter => 50,
         };
     }
 };
@@ -357,8 +391,8 @@ pub const Structure = struct {
     position: Vec2 = .{},
     address: Vec2i = .{},
     orientation: Orientation = .n,
-    shadow: ?ShadowIndex = null,
-    count: usize = 0,
+    // used by splitter to decide which side thing will go
+    index: usize = 0,
     health: u16 = 4,
     slots: [4]?SlotType = [_]?SlotType{null} ** 4,
 
@@ -389,17 +423,18 @@ pub const Structure = struct {
                 self.slots[self.orientation.toIndex()] = .pickup;
                 self.slots[self.orientation.next().toIndex()] = .action;
             },
+            .splitter => {
+                self.slots[self.orientation.toIndex()] = .dropoff;
+                self.slots[self.orientation.next().toIndex()] = .pickup;
+                self.slots[self.orientation.opposite().toIndex()] = .pickup;
+                self.slots[self.orientation.opposite().next().toIndex()] = .pickup;
+            },
         }
     }
 
     pub fn update(self: *Structure, game: *Game) void {
-        if (self.structure == .altar) {
-            if (self.count > 0) self.count -= 1;
-            if (self.count == 0 and self.shadow != null) {
-                game.shadows.shadows.getPtr(self.shadow.?).dead = true;
-                self.shadow = null;
-            }
-        }
+        _ = self;
+        _ = game;
     }
 };
 
@@ -705,6 +740,7 @@ pub const DjinnSystem = struct {
 
     pub fn energyRemaining(self: *DjinnSystem) bool {
         for (self.djinns.items()) |djinn| {
+            if (djinn.path == null) continue;
             if (djinn.actor.energy > 0 or djinn.actor.carrying != null) return true;
         }
         return false;
@@ -1019,6 +1055,7 @@ const MenuAction = enum {
     set_mode_build_altar,
     set_mode_build_lamp,
     set_mode_build_combiner,
+    set_mode_build_splitter,
     set_mode_loop_create,
     set_mode_loop_delete,
     set_mode_djinn_manage,
@@ -1451,8 +1488,8 @@ pub const Game = struct {
         const sy = SCREEN_SIZE.y;
         self.menu.append(.{
             .rect = .{
-                .position = .{ .x = sx * 0.3, .y = sy * 0.4 },
-                .size = .{ .x = sx * 0.4, .y = sy * 0.3 },
+                .position = .{ .x = sx * 0.3, .y = sy * 0.2 },
+                .size = .{ .x = sx * 0.4, .y = sy * 0.6 },
             },
         }) catch unreachable;
         self.menu.append(.{
@@ -1532,6 +1569,18 @@ pub const Game = struct {
                     .text = "Build Combiner",
                 },
             }) catch unreachable;
+            current_pos = current_pos.add(.{ .y = -40 });
+            self.menu.append(.{
+                .button = .{
+                    .rect = .{
+                        .position = current_pos,
+                        .size = .{ .x = 200, .y = 25 },
+                    },
+                    .value = @intFromEnum(MenuAction.set_mode_build_splitter),
+                    .enabled = self.gems >= self.getMenuActionCost(@intFromEnum(MenuAction.set_mode_build_splitter)).?,
+                    .text = "Build Splitter",
+                },
+            }) catch unreachable;
         }
         if (show_start_day_button) {
             current_pos = Vec2{ .x = sx * 0.3 + 300, .y = sy * 0.7 - 40 };
@@ -1584,7 +1633,7 @@ pub const Game = struct {
                     .size = .{ .x = 200, .y = 25 },
                 },
                 .value = @intFromEnum(MenuAction.set_mode_build_altar),
-                .text = "Build Trap",
+                .text = "Build Altar",
                 .enabled = self.gems >= self.getMenuActionCost(@intFromEnum(MenuAction.set_mode_build_altar)).?,
             },
         }) catch unreachable;
@@ -1720,6 +1769,7 @@ pub const Game = struct {
                         },
                         .base => unreachable,
                         .altar => unreachable,
+                        .splitter => unreachable,
                     }
                 },
             }
@@ -1729,6 +1779,7 @@ pub const Game = struct {
 
     fn hasResource(self: *const Game, address: Vec2i) ?ResourceType {
         for (self.resources.items) |rsc| {
+            if (rsc.end_scale == 0) continue;
             if (rsc.address.equal(address)) return rsc.resource;
         }
         return null;
@@ -1741,7 +1792,7 @@ pub const Game = struct {
         return false;
     }
 
-    fn removeResource(self: *Game, address: Vec2i, end_address: Vec2i) void {
+    fn moveResource(self: *Game, address: Vec2i, end_address: Vec2i) void {
         for (self.resources.items) |*rsc| {
             if (rsc.address.equal(address)) {
                 rsc.address = .{ .x = 10000, .y = 10000 };
@@ -1756,6 +1807,39 @@ pub const Game = struct {
         unreachable;
     }
 
+    fn splitterAction(self: *Game, skey: StructureIndex) void {
+        const str = self.structures.getPtr(skey);
+        if (str.structure != .splitter) return;
+        const dropoff_address = str.address.add(str.orientation.toDir());
+        const resource = self.hasResource(dropoff_address) orelse return;
+        // check for slot
+        str.index = (str.index + 1) % 3;
+        for (0..3) |i| {
+            const index = (str.index + i) % 3;
+            // we do 1 + index because 0 is the dropoff
+            const slot_orientation = str.orientation.nextStep(1 + index);
+            const address = str.address.add(slot_orientation.toDir());
+            const splitter_resource = self.hasResource(address);
+            if (splitter_resource == null) {
+                self.removeResource(dropoff_address);
+                self.resources.append(Resource.create(resource, dropoff_address, str.address, false, self.world)) catch unreachable;
+                self.resources.append(Resource.create(resource, str.address, address, true, self.world)) catch unreachable;
+                str.index = index;
+                break;
+            }
+        }
+    }
+
+    fn removeResource(self: *Game, address: Vec2i) void {
+        for (self.resources.items, 0..) |rsc, i| {
+            if (rsc.end_scale != 0 and rsc.address.equal(address)) {
+                _ = self.resources.swapRemove(i);
+                return;
+            }
+        }
+        helpers.debugPrint("Could not remove resource aaaah!", .{});
+    }
+
     fn doAction(self: *Game, action: Action, actor: *Actor) void {
         if (!action.can_be_done) return;
         const str = self.structures.getPtr(action.structure);
@@ -1766,7 +1850,7 @@ pub const Game = struct {
                 helpers.assert(has_resource != null);
                 actor.carrying = has_resource;
                 actor.energy -= 1;
-                self.removeResource(action.address, action.address);
+                self.moveResource(action.address, action.address);
             },
             .dropoff => {
                 const has_resource = self.hasResource(action.address);
@@ -1775,6 +1859,9 @@ pub const Game = struct {
                 if (str.structure == .base) {
                     self.inventory[@intFromEnum(actor.carrying.?)] += 1;
                     self.resources.append(Resource.create(actor.carrying.?, action.address, str.address, false, self.world)) catch unreachable;
+                } else if (str.structure == .splitter) {
+                    self.resources.append(Resource.create(actor.carrying.?, action.address, action.address, true, self.world)) catch unreachable;
+                    self.splitterAction(action.structure);
                 } else {
                     self.resources.append(Resource.create(actor.carrying.?, action.address, action.address, true, self.world)) catch unreachable;
                 }
@@ -1795,8 +1882,8 @@ pub const Game = struct {
                         const d1_has_resource = self.hasResource(str.address.add(str.orientation.opposite().next().toDir()));
                         const new_resource = ResourceType.fromValue(d0_has_resource.?.value() + d1_has_resource.?.value());
                         self.resources.append(Resource.create(new_resource, str.address, str.address.add(str.orientation.toDir()), true, self.world)) catch unreachable;
-                        self.removeResource(str.address.add(str.orientation.opposite().toDir()), str.address);
-                        self.removeResource(str.address.add(str.orientation.opposite().next().toDir()), str.address);
+                        self.moveResource(str.address.add(str.orientation.opposite().toDir()), str.address);
+                        self.moveResource(str.address.add(str.orientation.opposite().next().toDir()), str.address);
                         actor.energy -= 1;
                     },
                     .lamp => {
@@ -1805,6 +1892,7 @@ pub const Game = struct {
                     },
                     .base => unreachable,
                     .altar => unreachable,
+                    .splitter => unreachable,
                 }
             },
         }
@@ -1880,6 +1968,11 @@ pub const Game = struct {
                 if (self.gems < COST_OF_COMBINER) return;
                 self.builder.mode = .build;
                 self.builder.structure = .combiner;
+            },
+            .set_mode_build_splitter => {
+                if (self.gems < COST_OF_SPLITTER) return;
+                self.builder.mode = .build;
+                self.builder.structure = .splitter;
             },
         }
     }
@@ -2117,7 +2210,7 @@ pub const Game = struct {
         }
         if (destroyed.items.len == 0) {
             // damage base
-            self.damageStructure(.{ .index = 0 }, 3);
+            self.damageStructure(.{ .index = 0 }, 10);
         } else {
             self.aggression_ticks = self.aggression_timer;
         }
@@ -2202,6 +2295,10 @@ pub const Game = struct {
                 }
                 if (BUILDER_MODE) {
                     if (self.haathi.inputs.getKey(.m).is_clicked) self.startSunset();
+                }
+                for (self.structures.keys()) |skey| {
+                    const str = self.structures.getPtr(skey);
+                    if (str.structure == .splitter) self.splitterAction(skey);
                 }
                 self.djinns.update(self);
                 self.checkDayComplete();
@@ -2350,7 +2447,7 @@ pub const Game = struct {
             .altar => {
                 return self.getSlot(address) == null and self.getStructure(address) == null and self.validPathPosition(null, address) == null and !self.isOrePatch(address);
             },
-            .combiner => {
+            .combiner, .splitter => {
                 // no structure on cell, and ortho neighbors
                 const space = [_]Vec2i{ .{}, .{ .x = 1 }, .{ .y = 1 }, .{ .x = -1 }, .{ .y = -1 } };
                 for (space) |cell| {
@@ -2604,6 +2701,7 @@ pub const Game = struct {
             .altar => COST_OF_TRAP,
             .lamp => COST_OF_LAMP,
             .combiner => COST_OF_COMBINER,
+            .splitter => COST_OF_SPLITTER,
         };
     }
 
@@ -2614,6 +2712,7 @@ pub const Game = struct {
             .set_mode_build_altar => return COST_OF_TRAP,
             .set_mode_build_lamp => return COST_OF_LAMP,
             .set_mode_build_combiner => return COST_OF_COMBINER,
+            .set_mode_build_splitter => return COST_OF_SPLITTER,
             .action_summon_djinn => return self.djinn_summon_cost,
             else => return null,
         }
@@ -2737,14 +2836,6 @@ pub const Game = struct {
                 });
                 //self.haathi.drawText(.{ .text = NUMBER_STR[rsc.value()], .position = rpos, .color = colors.white.alpha(0.5), .style = FONTS[1] });
             }
-        }
-        for (self.resources.items) |rsc| {
-            self.haathi.drawSprite(.{
-                .position = self.world.worldToScreen(rsc.position),
-                .sprite = ORE_SPRITES[rsc.resource.value()],
-                .scale = .{ .x = rsc.scale, .y = rsc.scale },
-                .anchor = .center,
-            });
         }
         if (self.builder.mode != .menu) self.haathi.drawText(.{ .text = @tagName(self.builder.mode), .position = self.haathi.inputs.mouse.current_pos.add(.{ .y = -20 }), .style = FONTS[1], .color = colors.solarized_base03.alpha(0.7) });
         if (self.builder.mode == .loop_create) {
@@ -2959,6 +3050,14 @@ pub const Game = struct {
         // draw structures
         for (self.structures.items()) |str| {
             self.drawStructure(str);
+        }
+        for (self.resources.items) |rsc| {
+            self.haathi.drawSprite(.{
+                .position = self.world.worldToScreen(rsc.position),
+                .sprite = ORE_SPRITES[rsc.resource.value()],
+                .scale = .{ .x = rsc.scale, .y = rsc.scale },
+                .anchor = .center,
+            });
         }
         // draw player
         self.haathi.drawRect(.{

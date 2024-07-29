@@ -454,10 +454,10 @@ Lets make the list again.
 [X] Change the world size to have space for menus and things outside bounds.
 [X] Fix some shadow collision issues
 [X] Add a time limit for nights - so that you can't just wait around
+[X] Healths of structures should make more sense. Show them, and make
+different shadows do different amounts of damage
 [ ] Summoning - when you loop around sets of shadows+structures, effects are
 enacted. So its an additional challenge thing that you can do.
-[ ] Healths of structures should make more sense. Show them, and make
-different shadows do different amounts of damage
 [ ] If base is destroyed, lose game
 [ ] Economy - figure out prices for things.
 [ ] Add a splitter that distributes from one spot to many.
@@ -510,3 +510,22 @@ they don't seem to make contact with the structure and damage them...
 Okay, that's fascinating. I think I like it. It might get overpowered. But
 also I think if they don't always target the base, then you don't have to make
 a thing like that.
+
+Now lets make the trail fade with time. Done. Look at the wholistic game now.
+What are the things required. Transplant the list here.
+
+[ ] Summoning - when you loop around sets of shadows+structures, effects are
+enacted. So its an additional challenge thing that you can do.
+[ ] If base is destroyed, lose game
+[ ] Economy - figure out prices for things.
+[ ] Add a splitter that distributes from one spot to many.
+
+Lose game if thing is done. Also lets have a minimum number of capture
+required per night? Something like that, to have pressure on building altars. 
+
+Or lets build a splitter.
+
+NEXT: Fix the splitter. If something is dropped off, it doesnt split it once
+the slot clears. Also code might be broken because we were trying to make the
+splitter action based instead of dropoff based.
+Nice. That also works.

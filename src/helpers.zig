@@ -27,6 +27,11 @@ pub const Orientation = enum {
             .w => .n,
         };
     }
+    pub fn nextStep(self: *const Orientation, count: usize) Orientation {
+        var start = self.*;
+        for (0..count) |_| start = start.next();
+        return start;
+    }
     pub fn toIndex(self: *const Orientation) usize {
         return @intFromEnum(self.*);
     }
