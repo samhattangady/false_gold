@@ -90,14 +90,14 @@ const ORE_START_OFFSET = Vec2{ .x = 1, .y = 22 };
 const ORE_ANIMATION_OFFSETS = [4]f32{ 0, -1, 2, 4 };
 
 const ORE_SPRITES = [_]haathi_lib.Sprite{
-    .{ .path = "/img/ore0.png", .anchor = .{}, .size = .{ .x = 18, .y = 20 } },
-    .{ .path = "/img/ore0.png", .anchor = .{}, .size = .{ .x = 18, .y = 20 } },
-    .{ .path = "/img/ore1.png", .anchor = .{}, .size = .{ .x = 18, .y = 20 } },
+    .{ .path = "img/ore0.png", .anchor = .{}, .size = .{ .x = 18, .y = 20 } },
+    .{ .path = "img/ore0.png", .anchor = .{}, .size = .{ .x = 18, .y = 20 } },
+    .{ .path = "img/ore1.png", .anchor = .{}, .size = .{ .x = 18, .y = 20 } },
 };
 
-const PICKUP_SPRITE = haathi_lib.Sprite{ .path = "/img/structures.png", .anchor = .{ .x = 0 * 28 }, .size = .{ .x = 28, .y = 28 } };
-const DROPOFF_SPRITE = haathi_lib.Sprite{ .path = "/img/structures.png", .anchor = .{ .x = 1 * 28 }, .size = .{ .x = 28, .y = 28 } };
-const ACTION_SPRITE = haathi_lib.Sprite{ .path = "/img/structures.png", .anchor = .{ .x = 2 * 28 }, .size = .{ .x = 28, .y = 28 } };
+const PICKUP_SPRITE = haathi_lib.Sprite{ .path = "img/structures.png", .anchor = .{ .x = 0 * 28 }, .size = .{ .x = 28, .y = 28 } };
+const DROPOFF_SPRITE = haathi_lib.Sprite{ .path = "img/structures.png", .anchor = .{ .x = 1 * 28 }, .size = .{ .x = 28, .y = 28 } };
+const ACTION_SPRITE = haathi_lib.Sprite{ .path = "img/structures.png", .anchor = .{ .x = 2 * 28 }, .size = .{ .x = 28, .y = 28 } };
 // TODO (23 Jul 2024 sam): lol
 const NUMBER_STR = [_][]const u8{ "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49" };
 
