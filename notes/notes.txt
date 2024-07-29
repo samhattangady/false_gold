@@ -453,12 +453,12 @@ Lets make the list again.
 
 [X] Change the world size to have space for menus and things outside bounds.
 [X] Fix some shadow collision issues
+[X] Add a time limit for nights - so that you can't just wait around
 [ ] Summoning - when you loop around sets of shadows+structures, effects are
 enacted. So its an additional challenge thing that you can do.
 [ ] Healths of structures should make more sense. Show them, and make
 different shadows do different amounts of damage
 [ ] If base is destroyed, lose game
-[ ] Add a time limit for nights - so that you can't just wait around
 [ ] Economy - figure out prices for things.
 [ ] Add a splitter that distributes from one spot to many.
 
@@ -494,3 +494,19 @@ random shadow attacks base. Lets try that out.
 NEXT: Figure out aggression. We want it to attack once and then lose
 aggression. Right now its not attacking. Just going towards and getting stuck.
 Also it gets stuck when we block it. We want it to kinda keep bouncing off..
+
+---
+
+29 Jul 2024:
+Okay good we have a clear task to get started with. So we should do that
+ideally lol. So we want some kind of bounciness. I think some of this is a
+little hard to wrap my head around. The way that velocity should or should not
+change etc. Maybe we should just have a fully separate thing for aggressive?
+
+Okay damn. The aggresion thing is fascinating. It both forces you to move, and
+makes the captures a lot easier. I like that as an idea. But unfortunately,
+they don't seem to make contact with the structure and damage them...
+
+Okay, that's fascinating. I think I like it. It might get overpowered. But
+also I think if they don't always target the base, then you don't have to make
+a thing like that.

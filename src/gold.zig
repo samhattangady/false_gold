@@ -364,6 +364,7 @@ pub const Structure = struct {
 
     fn setup(self: *Structure, world: World) void {
         self.health = self.structure.startingHealth();
+        self.position = world.gridCenter(self.address);
         switch (self.structure) {
             .base => {
                 self.slots[0] = .dropoff;
@@ -796,6 +797,14 @@ pub const ShadowType = enum {
         };
     }
 
+    pub fn getRect(self: *const ShadowType, pos: Vec2) Rect {
+        const size_ = self.size();
+        return .{
+            .position = pos.add(size_.scale(-0.5)),
+            .size = size_,
+        };
+    }
+
     pub fn radius(self: *const ShadowType) f32 {
         return self.size().y;
     }
@@ -859,6 +868,9 @@ pub const Shadow = struct {
         const old_v = self.vel_mag;
         self.vel_mag = @max(self.shadow.velocityMax(), self.vel_mag * SHADOW_DECELERATE_RATE);
         if (old_v != self.vel_mag) self.velocity = self.velocity.normalize().scale(self.vel_mag);
+        // TODO (29 Jul 2024 sam): We also want to add a perpendicular movement if it collides with
+        // anything, so that it can "brute force" path find, and not get stuck in a single spot, where
+        // collision is colinear with target and shadow.
         if (self.target) |target| {
             self.velocity = target.subtract(self.position).normalize().scale(self.vel_mag);
             dir_changed = true;
@@ -867,7 +879,11 @@ pub const Shadow = struct {
         if (game.getWorldRepeller(self.position, new_position, self.radius)) |repeller| {
             self.velocity = self.position.subtract(repeller).normalize().scale(self.vel_mag);
             dir_changed = true;
+        } else if (game.collidesTrail(self.position, new_position, self.shadow)) |center| {
+            self.velocity = self.position.subtract(center).normalize().scale(self.vel_mag);
+            dir_changed = true;
         } else if (game.collides(self.position, new_position, self.shadow)) |center| {
+            self.vel_mag = self.shadow.velocityScared();
             self.velocity = self.position.subtract(center).normalize().scale(self.vel_mag);
             dir_changed = true;
             self.target = null;
@@ -879,6 +895,7 @@ pub const Shadow = struct {
         } else {
             self.position = new_position;
         }
+        if (self.target != null) self.position = self.position.add(self.velocity);
         return dir_changed;
     }
 
@@ -1354,17 +1371,22 @@ pub const Game = struct {
         }
     }
 
+    pub fn collidesTrail(self: *Game, prev_pos: Vec2, pos: Vec2, shadow_type: ShadowType) ?Vec2 {
+        if (self.trail.inRange(prev_pos, pos, shadow_type.radius())) |point| return point;
+        return null;
+    }
+
+    // collide with structure
     pub fn collides(self: *Game, prev_pos: Vec2, pos: Vec2, shadow_type: ShadowType) ?Vec2 {
-        // collide with structure
-        const address = self.world.worldPosToAddress(pos);
+        _ = prev_pos;
+        const shadow_rect = shadow_type.getRect(pos);
         for (self.structures.keys()) |skey| {
             const structure = self.structures.getPtr(skey);
-            if (structure.address.equal(address)) {
+            if (shadow_rect.overlaps(self.world.cellToRect(structure.address))) {
                 self.damageStructure(skey, shadow_type.damage());
-                return self.world.gridCenter(address);
+                return structure.position;
             }
         }
-        if (self.trail.inRange(prev_pos, pos, shadow_type.radius())) |point| return point;
         return null;
     }
 

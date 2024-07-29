@@ -422,6 +422,18 @@ pub const Rect = struct {
             (pos.y < maxy);
     }
 
+    pub fn overlaps(self: *const Rect, other: Rect) bool {
+        const sx0 = self.position.x;
+        const sx1 = self.position.x + self.size.x;
+        const sy0 = self.position.y;
+        const sy1 = self.position.y + self.size.y;
+        const ox0 = other.position.x;
+        const ox1 = other.position.x + other.size.x;
+        const oy0 = other.position.y;
+        const oy1 = other.position.y + other.size.y;
+        return rangeOverlap(sx0, sx1, ox0, ox1) and rangeOverlap(sy0, sy1, oy0, oy1);
+    }
+
     pub fn center(self: *const Self) Vec2 {
         return self.position.add(self.size.scale(0.5));
     }
@@ -511,6 +523,14 @@ pub const TextLine = struct {
     text: []const u8,
     position: Vec2,
 };
+
+pub fn rangeOverlap(r0: f32, r1: f32, s0: f32, s1: f32) bool {
+    const r_start = @min(r0, r1);
+    const r_end = @max(r0, r1);
+    const s_start = @min(s0, s1);
+    const s_end = @max(s0, s1);
+    return (r_start <= s_end and s_start <= r_end);
+}
 
 pub fn pointToRectDistanceSqr(point: Vec2, position: Vec2, size: Vec2) f32 {
     const other = position.add(size);
